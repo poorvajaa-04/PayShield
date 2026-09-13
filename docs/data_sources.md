@@ -44,21 +44,7 @@ Transaction relationships will provide the initial account-to-account edges for 
 
 ---
 
-## 3. IEEE-CIS Fraud Detection
-
-**Purpose:** Fraud and identity-related evidence
-
-**Status:** Planned
-
-**Local path:**
-`data/raw/ieee-cis/`
-
-**Use in PayShield:**
-Transaction and identity attributes can be used to supplement fraud analysis and synthetic entity relationships.
-
----
-
-## 4. Synthetic Lure Dataset
+## 3. Synthetic Lure Dataset
 
 **Purpose:** Lure/scam evidence stream
 
@@ -69,7 +55,7 @@ Transaction and identity attributes can be used to supplement fraud analysis and
 
 ---
 
-## 5. Synthetic Session Dataset
+## 4. Synthetic Session Dataset
 
 **Purpose:** Session anomaly evidence stream
 
