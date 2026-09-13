@@ -1,7 +1,6 @@
 from datetime import datetime, timezone
 
-from app.evidence.schema import EvidenceOutput
-
+from ..schema import EvidenceOutput
 
 LURE_PATTERNS = {
     "fake_authority": [

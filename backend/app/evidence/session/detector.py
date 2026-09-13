@@ -1,7 +1,6 @@
 from datetime import datetime, timezone
 
-from app.evidence.schema import EvidenceOutput
-
+from ..schema import EvidenceOutput
 
 def classify(
     is_new_device: bool,
