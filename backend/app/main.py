@@ -1,7 +1,6 @@
 from fastapi import FastAPI, HTTPException
 
-from app.models.case import Case, TimelineEvent
-
+from backend.app.models.case import Case, TimelineEvent
 
 app = FastAPI(title="PayShield API")
 
