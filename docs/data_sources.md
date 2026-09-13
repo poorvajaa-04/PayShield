@@ -26,7 +26,15 @@ Network traffic features and attack/benign labels for developing and evaluating 
 
 **Purpose:** Entity graph and transaction evidence
 
-**Status:** Planned
+**Status:** Downloaded
+
+**Downloaded:** 2026-09-13
+
+**File:** PS_20174392719_1491204439457_log.csv
+
+**Format:** CSV
+
+**Primary fields used:** nameOrig, nameDest, type, amount, step, isFraud
 
 **Local path:**
 `data/raw/paysim/`
