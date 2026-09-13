@@ -6,7 +6,13 @@
 
 **Provider:** Canadian Institute for Cybersecurity
 
-**Status:** Planned
+**Status:** Downloaded
+
+**Version:** CIC-IDS2017
+
+**Downloaded:** 2026-09-13
+
+**Format used:** MachineLearningCSV.zip
 
 **Local path:**
 `data/raw/cic-ids/`
