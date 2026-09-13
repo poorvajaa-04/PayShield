@@ -33,7 +33,7 @@ def run_case(
     correlated: bool = True,
 ) -> dict:
 
-    case = Case(case_id)
+    case = Case(case_id=case_id)
     correlator = Correlator(case, graph=graph)
 
     independent_results = []

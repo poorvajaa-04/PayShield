@@ -19,6 +19,7 @@ from __future__ import annotations
 from typing import Optional
 from .models.case import Case
 from .entity_graph.entity_graph import EntityGraph
+
 # Kill-chain progression, in order. Index = severity rank.
 ATTACK_STATES = [
     "NONE",
@@ -77,9 +78,12 @@ class Correlator:
         self.case.log("suspicious_message_detected", stream="lure",
                        probability=probability, matched_pattern=matched_pattern,
                        identifier_flagged_by_graph=graph_hit)
-        self.case.add_evidence("lure", probability=probability, matched_pattern=matched_pattern,
-                                matched_terms=lure_result.matched_terms,
-                                identifier_flagged_by_graph=graph_hit)
+        self.case.add_evidence(
+    "lure",
+    probability=probability,
+    matched_pattern=matched_pattern,
+    identifier_flagged_by_graph=graph_hit,
+)
         if probability >= 0.5:
             self._maybe_advance("LURE_DETECTED",
                                  f"lure probability {probability} ({matched_pattern})", "lure")
@@ -88,19 +92,19 @@ class Correlator:
 
     def feed_network(self, net_result):
         self.case.log("network_anomaly_detected", stream="network",
-                       probability=net_result.probability, attack_type=net_result.attack_type)
+                       probability=net_result.probability, matched_pattern=net_result.matched_pattern)
         self.case.add_evidence("network", probability=net_result.probability,
-                                attack_type=net_result.attack_type, detail=net_result.detail)
+                                matched_pattern=net_result.matched_pattern)
         if net_result.probability >= 0.5:
             self._maybe_advance("CREDENTIAL_ATTACK",
                                  f"network intrusion probability {net_result.probability} "
-                                 f"({net_result.attack_type})", "network")
+                                 f"({net_result.matched_pattern})", "network")
 
     # ---------- Stage 3: session, now with live "device already flagged" check ----------
 
     def feed_session(self, session_result, device_id: Optional[str] = None):
-        anomaly_score = session_result.anomaly_score
-        triggering_feature = session_result.triggering_feature
+        anomaly_score = session_result.probability
+        triggering_feature = session_result.matched_pattern
         linked_flagged_accounts = []
 
         if device_id and self.graph is not None:
