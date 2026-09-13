@@ -1,14 +1,19 @@
 from fastapi import FastAPI
 
-app = FastAPI(
-    title="PayShield API",
-    version="0.1.0"
-)
+from app.models.case import Case
+
+app = FastAPI(title="PayShield API")
+
+
+cases: dict[str, Case] = {}
 
 
 @app.get("/")
 def root():
-    return {
-        "project": "PayShield",
-        "status": "running"
-    }
+    return {"project": "PayShield", "status": "running"}
+
+
+@app.post("/cases")
+def create_case(case: Case):
+    cases[case.case_id] = case
+    return case
