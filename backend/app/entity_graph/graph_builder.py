@@ -27,3 +27,29 @@ def build_transaction_graph(csv_path: str) -> nx.DiGraph:
             )
 
     return graph
+
+def get_device_links(account_id: str):
+    """
+    Return accounts connected through a shared device.
+
+    Placeholder for the future session-risk stage.
+    """
+    return []
+
+
+def get_known_scam_contacts(phone_or_vpa: str):
+    """
+    Return known scam contacts associated with a phone number or VPA.
+
+    Placeholder for the future lure-risk stage.
+    """
+    return []
+
+
+def get_community(account_id: str):
+    """
+    Return the community containing the account.
+
+    Placeholder for the future mule-detection stage.
+    """
+    return None
