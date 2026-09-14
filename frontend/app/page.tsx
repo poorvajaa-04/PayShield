@@ -114,7 +114,7 @@ export default function Home() {
     try {
 
       const response = await fetch(
-        "http://127.0.0.1:8000/cases/CASE-2026-0142/run",
+        `${process.env.NEXT_PUBLIC_API_URL}/cases/CASE-2026-0142/run`,
         {
           method: "POST",
 
