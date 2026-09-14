@@ -9,7 +9,12 @@ import {
 } from "lucide-react";
 
 interface DecisionPanelProps {
-  decision?: "allow" | "review" | "block" | "pending";
+  decision?:
+    | "allow"
+    | "review"
+    | "block"
+    | "pending"
+    | "TRANSACTION_HOLD";
   reason?: string;
   actions?: string[];
 }
@@ -38,6 +43,13 @@ export default function DecisionPanel({
       label: "Block",
       icon: ShieldAlert,
       description: "Protective action recommended",
+      className: "text-[#b42318]",
+    },
+
+    TRANSACTION_HOLD: {
+      label: "Transaction Hold",
+      icon: ShieldAlert,
+      description: "Transaction should be held for investigation",
       className: "text-[#b42318]",
     },
 
@@ -92,7 +104,9 @@ export default function DecisionPanel({
             Recommended action
           </p>
 
-          <div className={`mt-3 flex items-center gap-3 ${current.className}`}>
+          <div
+            className={`mt-3 flex items-center gap-3 ${current.className}`}
+          >
 
             <Icon size={25} strokeWidth={1.7} />
 
@@ -145,11 +159,11 @@ export default function DecisionPanel({
           <div className="border border-dashed border-[#d6d9dd] bg-[#fafafa] px-5 py-7 text-center">
 
             <p className="text-sm font-medium text-gray-500">
-              No policy actions yet
+              No additional policy actions
             </p>
 
             <p className="mt-1 text-xs text-gray-400">
-              Actions will appear after policy evaluation.
+              The case engine has determined the required action.
             </p>
 
           </div>

@@ -1,51 +1,310 @@
 "use client";
 
 import { useState } from "react";
+
 import Sidebar from "@/components/Sidebar";
 import Header from "@/components/Header";
 import CaseSummary from "@/components/CaseSummary";
 import EvidencePanel from "@/components/EvidencePanel";
 import CorrelationPanel from "@/components/CorrelationPanel";
-import AttackStatePanel from "@/components/AttackStatePanel";
 import EntityGraphPanel from "@/components/EntityGraphPanel";
+import AttackStatePanel from "@/components/AttackStatePanel";
 import DecisionPanel from "@/components/DecisionPanel";
 
-export default function Home() {
-  const [loading, setLoading] = useState(false);
+interface BackendEvidence {
+  stream: string;
+  probability?: number;
+  anomaly_score?: number;
+  matched_pattern?: string;
+  triggering_feature?: string;
+  amount?: number;
+  to_account?: string;
+}
 
-  const handleRun = async () => {
-    setLoading(true);
+interface BackendTimelineEvent {
+  t: string;
+  event: string;
+  stream: string;
+  from_state?: string;
+  to?: string;
+  reason?: string;
+  probability?: number;
+  anomaly_score?: number;
+  matched_pattern?: string;
+  triggering_feature?: string;
+  amount?: number;
+  to_account?: string;
+}
 
-    // Temporary placeholder.
-    // This will later call the PayShield FastAPI backend.
-    await new Promise((resolve) => setTimeout(resolve, 1200));
+interface BackendResult {
+  mode: string;
 
-    setLoading(false);
+  case: {
+    case_id: string;
+    attack_state: string;
+    final_action: string;
+    timeline: BackendTimelineEvent[];
+    evidence: BackendEvidence[];
   };
 
+  final_action: string;
+  explanation: string[];
+}
+
+
+/* =========================================================
+   TEST CASE
+========================================================= */
+
+const testScript = [
+  {
+    type: "lure",
+    text: "I am from CBI. Share the OTP immediately or your account will be blocked.",
+    identifier: "9876500000",
+    t: "10:31",
+  },
+
+  {
+    type: "network",
+    failed_logins: 9,
+    requests_per_minute: 40,
+    distinct_source_ips: 6,
+    t: "10:33",
+  },
+
+  {
+    type: "session",
+    is_new_device: true,
+    geo_velocity_kmph: 850,
+    login_hour_local: 3,
+    remote_access_tool_detected: true,
+    device_id: "DEV-88A1",
+    t: "10:35",
+  },
+
+  {
+    type: "transaction",
+    amount: 85000,
+    from_account: "ACC-0142",
+    to_account: "ACC-0091",
+    t: "10:37",
+  },
+];
+
+
+export default function Home() {
+
+  const [loading, setLoading] = useState(false);
+
+  const [result, setResult] =
+    useState<BackendResult | null>(null);
+
+  const [error, setError] = useState("");
+
+
+  /* =========================================================
+     RUN ANALYSIS
+  ========================================================= */
+
+  const handleRun = async () => {
+
+    setLoading(true);
+    setError("");
+
+    try {
+
+      const response = await fetch(
+        "http://127.0.0.1:8000/cases/CASE-2026-0142/run",
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type": "application/json",
+          },
+
+          body: JSON.stringify({
+            script: testScript,
+            correlated: true,
+          }),
+        }
+      );
+
+
+      if (!response.ok) {
+        throw new Error("Backend analysis failed.");
+      }
+
+
+      const data: BackendResult =
+        await response.json();
+
+
+      setResult(data);
+
+    } catch (err) {
+
+      console.error(err);
+
+      setError(
+        "Backend connection failed. Make sure FastAPI is running on port 8000."
+      );
+
+    } finally {
+
+      setLoading(false);
+
+    }
+  };
+
+
+  /* =========================================================
+     EXTRACT EVIDENCE
+  ========================================================= */
+
+  const evidence =
+    result?.case.evidence ?? [];
+
+
+  const lure =
+    evidence.find(
+      (item) => item.stream === "lure"
+    );
+
+
+  const network =
+    evidence.find(
+      (item) => item.stream === "network"
+    );
+
+
+  const session =
+    evidence.find(
+      (item) => item.stream === "session"
+    );
+
+
+  const transaction =
+    evidence.find(
+      (item) => item.stream === "entity_graph"
+    );
+
+
+  /* =========================================================
+     RISK SCORE
+  ========================================================= */
+
+  const riskScore = result
+    ? Math.round(
+        Math.max(
+          lure?.probability ?? 0,
+          network?.probability ?? 0,
+          session?.anomaly_score ?? 0
+        ) * 100
+      )
+    : undefined;
+
+
+  /* =========================================================
+     ATTACK STATE
+  ========================================================= */
+
+  const attackState =
+    result?.case.attack_state;
+
+
+  /* =========================================================
+     DECISION
+  ========================================================= */
+
+  const decision =
+    result?.final_action === "TRANSACTION_HOLD"
+      ? "TRANSACTION_HOLD"
+      : result?.final_action === "BLOCK"
+        ? "block"
+        : result?.final_action === "ALLOW"
+          ? "allow"
+          : "pending";
+
+
+  /* =========================================================
+     TIMELINE / CORRELATION
+  ========================================================= */
+
+  const timeline =
+    result?.case.timeline ?? [];
+
+
+  const transitions =
+    timeline.filter(
+      (event) =>
+        event.event ===
+        "attack_state_transition"
+    );
+
+
+  const correlationSignals =
+    transitions.map(
+      (event) => ({
+        source: event.stream,
+
+        finding:
+          event.to ??
+          "State transition",
+
+        relation:
+          event.reason ??
+          "Cross-stage evidence contributed to state progression.",
+      })
+    );
+
+
+  /* =========================================================
+     EXPLAINABILITY
+  ========================================================= */
+
+  const indicators =
+    result
+      ? result.explanation.map(
+          (item) =>
+            item.replace(
+              /^\d+\.\s*/,
+              ""
+            )
+        )
+      : [];
+
+
   return (
+
     <div className="min-h-screen bg-[#f4f5f6]">
 
-      {/* Sidebar */}
+      {/* =====================================================
+          SIDEBAR
+      ===================================================== */}
+
       <Sidebar />
 
-      {/* Main application */}
+
       <main className="ml-64 min-h-screen">
 
-        {/* Header */}
+        {/* ===================================================
+            HEADER
+        =================================================== */}
+
         <Header
           onRun={handleRun}
           loading={loading}
         />
 
-        {/* Main content */}
+
         <div className="px-8 py-8">
 
           <div className="mx-auto max-w-[1500px]">
 
-            {/* =====================================================
+
+            {/* =================================================
                 PAGE HEADING
-            ====================================================== */}
+            ================================================= */}
 
             <div className="mb-8">
 
@@ -53,46 +312,92 @@ export default function Home() {
                 Investigation workspace
               </p>
 
+
               <h1 className="mt-2 text-3xl font-semibold tracking-tight text-[#17191d]">
                 Case intelligence
               </h1>
 
+
               <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-500">
-                Review how independent evidence streams combine into
-                an attack-state assessment and policy decision.
+                Review how independent evidence streams
+                combine into an attack-state assessment
+                and policy decision.
               </p>
 
             </div>
 
 
-            {/* =====================================================
+            {/* =================================================
+                ERROR
+            ================================================= */}
+
+            {error && (
+
+              <div className="mb-6 border border-[#e5b4b0] bg-[#fff8f7] px-5 py-4">
+
+                <p className="text-sm font-medium text-[#b42318]">
+                  {error}
+                </p>
+
+              </div>
+
+            )}
+
+
+            {/* =================================================
                 CASE SUMMARY
-            ====================================================== */}
+            ================================================= */}
 
-            <CaseSummary />
+            <CaseSummary
+
+              caseStatus={
+                result
+                  ? "Analysis complete"
+                  : "Under investigation"
+              }
 
 
-            {/* =====================================================
-                EVIDENCE STREAMS
-            ====================================================== */}
+              evidenceCount={4}
 
-            <section className="mt-8">
 
-              <div className="mb-4 flex items-end justify-between">
+              correlationStatus={
+                result
+                  ? "Signals correlated"
+                  : "Awaiting analysis"
+              }
 
-                <div>
 
-                  <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-gray-400">
-                    Evidence layer
-                  </p>
+              decision={
+                result
+                  ? result.final_action
+                  : "Pending"
+              }
 
-                  <h2 className="mt-1 text-lg font-semibold tracking-tight text-[#17191d]">
-                    Evidence streams
-                  </h2>
 
-                </div>
+              riskScore={riskScore}
 
-                <p className="text-xs text-gray-400">
+            />
+
+
+            {/* =================================================
+                EVIDENCE LAYER
+            ================================================= */}
+
+            <section className="mt-10">
+
+              <div className="mb-5">
+
+                <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-gray-400">
+                  Evidence layer
+                </p>
+
+
+                <h2 className="mt-1 text-xl font-semibold text-[#17191d]">
+                  Evidence streams
+                </h2>
+
+
+                <p className="mt-1 text-xs text-gray-500">
                   Independent signals · 4 streams
                 </p>
 
@@ -101,44 +406,152 @@ export default function Home() {
 
               <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
 
+
+                {/* =================================================
+                    LURE
+                ================================================= */}
+
                 <EvidencePanel
+
                   type="lure"
-                  status="pending"
-                  signal="No analysis performed"
-                  observations={[
-                    "Message and impersonation evidence will appear here.",
-                    "Coercion and credential-request indicators are evaluated independently.",
-                  ]}
+
+
+                  status={
+                    lure
+                      ? "active"
+                      : "pending"
+                  }
+
+
+                  signal={
+                    lure
+                      ? `${lure.matched_pattern} · ${Math.round(
+                          (lure.probability ?? 0) * 100
+                        )}%`
+                      : "Awaiting evidence"
+                  }
+
+
+                  observations={
+                    lure
+                      ? [
+                          "Message and impersonation evidence detected.",
+                          `Pattern: ${lure.matched_pattern}.`,
+                        ]
+                      : []
+                  }
+
                 />
 
+
+                {/* =================================================
+                    NETWORK
+                ================================================= */}
+
                 <EvidencePanel
+
                   type="network"
-                  status="pending"
-                  signal="No analysis performed"
-                  observations={[
-                    "Network behaviour will be evaluated from supplied telemetry.",
-                    "Connection and request patterns remain independent from transaction evidence.",
-                  ]}
+
+
+                  status={
+                    network
+                      ? "active"
+                      : "pending"
+                  }
+
+
+                  signal={
+                    network
+                      ? `${network.matched_pattern} · ${Math.round(
+                          (network.probability ?? 0) * 100
+                        )}%`
+                      : "Awaiting evidence"
+                  }
+
+
+                  observations={
+                    network
+                      ? [
+                          "Failed-login and request-rate behaviour detected.",
+                          `${network.matched_pattern}.`,
+                        ]
+                      : []
+                  }
+
                 />
 
+
+                {/* =================================================
+                    TRANSACTION
+                ================================================= */}
+
                 <EvidencePanel
+
                   type="transaction"
-                  status="pending"
-                  signal="No analysis performed"
-                  observations={[
-                    "Transaction behaviour will be evaluated against the case context.",
-                    "Amount, velocity and related payment signals will appear here.",
-                  ]}
+
+
+                  status={
+                    transaction
+                      ? "active"
+                      : "pending"
+                  }
+
+
+                  signal={
+                    transaction
+                      ? `₹${transaction.amount?.toLocaleString(
+                          "en-IN"
+                        )} → ${transaction.to_account}`
+                      : "Awaiting evidence"
+                  }
+
+
+                  observations={
+                    transaction
+                      ? [
+                          "Large transaction initiated.",
+                          "Receiving account was evaluated through the entity graph.",
+                        ]
+                      : []
+                  }
+
                 />
 
+
+                {/* =================================================
+                    DEVICE / SESSION
+                ================================================= */}
+
                 <EvidencePanel
+
                   type="device"
-                  status="pending"
-                  signal="No analysis performed"
-                  observations={[
-                    "Device identity and behavioural context will appear here.",
-                    "Device relationships can later contribute to cross-entity correlation.",
-                  ]}
+
+
+                  status={
+                    session
+                      ? "active"
+                      : "pending"
+                  }
+
+
+                  signal={
+                    session
+                      ? `${session.triggering_feature} · ${Math.round(
+                          (session.anomaly_score ?? 0) * 100
+                        )}%`
+                      : "Awaiting evidence"
+                  }
+
+
+                  observations={
+                    session
+                      ? [
+                          "New-device and session behaviour detected.",
+                          `${session.triggering_feature}.`,
+                        ]
+                      : []
+                  }
+
                 />
 
               </div>
@@ -146,185 +559,321 @@ export default function Home() {
             </section>
 
 
-            {/* =====================================================
+            {/* =================================================
                 CORRELATION LAYER
-            ====================================================== */}
+            ================================================= */}
 
-            <section className="mt-8">
+            <section className="mt-10">
 
-              <div className="mb-4">
+              <div className="mb-5">
 
                 <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-gray-400">
                   Correlation layer
                 </p>
 
-                <h2 className="mt-1 text-lg font-semibold tracking-tight text-[#17191d]">
-                  Cross-stage correlation
-                </h2>
-
               </div>
 
 
-              <CorrelationPanel />
+              <CorrelationPanel
+
+                status={
+                  result
+                    ? "detected"
+                    : "pending"
+                }
+
+
+                summary={
+                  result
+                    ? `${transitions.length} attack-state transitions were observed as evidence accumulated across the case.`
+                    : undefined
+                }
+
+
+                signals={
+                  correlationSignals
+                }
+
+              />
 
             </section>
 
 
-            {/* =====================================================
-                ENTITY GRAPH
-            ====================================================== */}
+            {/* =================================================
+                ENTITY LAYER
+            ================================================= */}
 
-            <section className="mt-8">
+            <section className="mt-10">
 
-              <div className="mb-4">
+              <div className="mb-5">
 
                 <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-gray-400">
                   Entity layer
                 </p>
 
-                <h2 className="mt-1 text-lg font-semibold tracking-tight text-[#17191d]">
-                  Entity relationships
-                </h2>
-
               </div>
 
 
-              <EntityGraphPanel />
+              <EntityGraphPanel
+                connected={Boolean(result)}
+              />
 
             </section>
 
 
-            {/* =====================================================
+            {/* =================================================
                 ATTACK STATE
-            ====================================================== */}
+            ================================================= */}
 
-            <section className="mt-8">
+            <section className="mt-10">
 
-              <div className="mb-4">
+              <div className="mb-5">
 
                 <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-gray-400">
                   Attack-state layer
                 </p>
 
-                <h2 className="mt-1 text-lg font-semibold tracking-tight text-[#17191d]">
-                  Attack progression
-                </h2>
-
               </div>
 
 
-              <AttackStatePanel />
+              <AttackStatePanel
+
+                state={
+                  attackState
+                }
+
+
+                confidence={
+                  riskScore
+                }
+
+
+                description={
+                  result
+                    ? `The case progressed through ${transitions.length} correlated state transitions and reached ${attackState}.`
+                    : undefined
+                }
+
+
+                indicators={
+                  indicators
+                }
+
+              />
 
             </section>
 
 
-            {/* =====================================================
+            {/* =================================================
                 POLICY DECISION
-            ====================================================== */}
+            ================================================= */}
 
-            <section className="mt-8">
+            <section className="mt-10">
 
-              <div className="mb-4">
+              <div className="mb-5">
 
                 <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-gray-400">
                   Policy layer
                 </p>
 
-                <h2 className="mt-1 text-lg font-semibold tracking-tight text-[#17191d]">
-                  Final policy decision
-                </h2>
-
               </div>
 
 
-              <DecisionPanel />
+              <DecisionPanel
+
+                decision={
+                  decision
+                }
+
+
+                reason={
+                  result
+                    ? result.final_action
+                    : undefined
+                }
+
+
+                actions={
+                  result
+                    ? [result.final_action]
+                    : []
+                }
+
+              />
 
             </section>
 
 
-            {/* =====================================================
+            {/* =================================================
+                EXPLAINABILITY
+            ================================================= */}
+
+            {result && (
+
+              <section className="mt-10 border border-[#dfe2e6] bg-white">
+
+
+                <div className="border-b border-[#e5e7eb] px-5 py-4">
+
+                  <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-gray-400">
+                    Explainability
+                  </p>
+
+
+                  <h2 className="mt-1 text-lg font-semibold text-[#17191d]">
+                    Why PayShield reached this result
+                  </h2>
+
+                </div>
+
+
+                <div className="divide-y divide-[#e5e7eb]">
+
+                  {result.explanation.map(
+                    (item, index) => (
+
+                      <div
+                        key={index}
+                        className="flex gap-4 px-5 py-4"
+                      >
+
+                        <span className="font-mono text-[10px] text-gray-400">
+
+                          {String(
+                            index + 1
+                          ).padStart(2, "0")}
+
+                        </span>
+
+
+                        <p className="text-sm leading-6 text-gray-600">
+
+                          {item.replace(
+                            /^\d+\.\s*/,
+                            ""
+                          )}
+
+                        </p>
+
+                      </div>
+
+                    )
+                  )}
+
+                </div>
+
+              </section>
+
+            )}
+
+
+            {/* =================================================
                 DECISION PIPELINE
-            ====================================================== */}
+            ================================================= */}
 
-            <section className="mt-8">
+            <section className="mt-10 mb-10 border border-[#dfe2e6] bg-white">
 
-              <div className="mb-4">
+
+              <div className="px-5 py-4">
 
                 <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-gray-400">
                   Decision pipeline
                 </p>
 
-                <h2 className="mt-1 text-lg font-semibold tracking-tight text-[#17191d]">
+
+                <h2 className="mt-1 text-lg font-semibold text-[#17191d]">
                   From evidence to decision
                 </h2>
 
               </div>
 
 
-              <div className="border border-[#dfe2e6] bg-white">
+              <div className="grid grid-cols-1 divide-y divide-[#e5e7eb] md:grid-cols-4 md:divide-x md:divide-y-0">
 
-                <div className="grid grid-cols-1 divide-y divide-[#e5e7eb] md:grid-cols-4 md:divide-x md:divide-y-0">
 
-                  <PipelineStage
-                    number="01"
-                    title="Evidence"
-                    description="Independent observations from four evidence streams."
-                    state="Ready"
-                  />
+                {[
+                  [
+                    "01",
+                    "Evidence",
+                    "Independent observations from four evidence streams.",
+                  ],
 
-                  <PipelineStage
-                    number="02"
-                    title="Correlation"
-                    description="Cross-stage relationships are evaluated together."
-                    state="Pending"
-                  />
+                  [
+                    "02",
+                    "Correlation",
+                    "Cross-stage relationships are evaluated together.",
+                  ],
 
-                  <PipelineStage
-                    number="03"
-                    title="Attack state"
-                    description="Correlated evidence contributes to case progression."
-                    state="Pending"
-                  />
+                  [
+                    "03",
+                    "Attack state",
+                    "Correlated evidence contributes to case progression.",
+                  ],
 
-                  <PipelineStage
-                    number="04"
-                    title="Decision"
-                    description="Policy logic determines the resulting action."
-                    state="Pending"
-                  />
+                  [
+                    "04",
+                    "Decision",
+                    "Policy logic determines the resulting action.",
+                  ],
 
-                </div>
+                ].map(
+                  ([
+                    number,
+                    title,
+                    description,
+                  ]) => (
+
+                    <div
+                      key={number}
+                      className="px-5 py-5"
+                    >
+
+                      <p className="font-mono text-[10px] text-gray-400">
+                        {number}
+                      </p>
+
+
+                      <p className="mt-2 text-sm font-semibold text-[#17191d]">
+                        {title}
+                      </p>
+
+
+                      <p className="mt-2 text-xs leading-5 text-gray-500">
+                        {description}
+                      </p>
+
+
+                      <p className="mt-4 font-mono text-[9px] uppercase tracking-[0.1em] text-[#027a48]">
+
+                        {result
+                          ? "Complete"
+                          : "Ready"}
+
+                      </p>
+
+                    </div>
+
+                  )
+                )}
+
+              </div>
+
+
+              <div className="border-t border-[#e5e7eb] px-5 py-4">
+
+                <p className="font-mono text-[9px] uppercase tracking-[0.12em] text-gray-400">
+                  PayShield case engine
+                </p>
+
+
+                <p className="mt-1 text-xs text-gray-500">
+                  Evidence remains separated from correlation
+                  and policy decision logic.
+                </p>
 
               </div>
 
             </section>
-
-
-            {/* =====================================================
-                FOOTER
-            ====================================================== */}
-
-            <div className="mt-8 flex items-center justify-between border-t border-[#dfe2e6] py-5">
-
-              <div>
-
-                <p className="font-mono text-[9px] uppercase tracking-[0.15em] text-gray-400">
-                  PayShield case engine
-                </p>
-
-                <p className="mt-1 text-xs text-gray-500">
-                  Evidence remains separated from correlation and
-                  policy decision logic.
-                </p>
-
-              </div>
-
-
-              <div className="font-mono text-[10px] text-gray-400">
-                CASE-2026-0142
-              </div>
-
-            </div>
 
           </div>
 
@@ -333,50 +882,6 @@ export default function Home() {
       </main>
 
     </div>
-  );
-}
 
-
-/* =============================================================
-   PIPELINE STAGE
-============================================================= */
-
-function PipelineStage({
-  number,
-  title,
-  description,
-  state,
-}: {
-  number: string;
-  title: string;
-  description: string;
-  state: string;
-}) {
-  return (
-    <div className="min-h-[170px] p-5">
-
-      <div className="flex items-start justify-between">
-
-        <span className="font-mono text-[10px] tracking-[0.12em] text-gray-400">
-          {number}
-        </span>
-
-        <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-gray-400">
-          {state}
-        </span>
-
-      </div>
-
-
-      <h3 className="mt-8 text-sm font-semibold text-[#17191d]">
-        {title}
-      </h3>
-
-
-      <p className="mt-2 text-xs leading-5 text-gray-500">
-        {description}
-      </p>
-
-    </div>
   );
 }

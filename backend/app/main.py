@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from backend.app.models.case import Case, TimelineEvent
@@ -7,6 +8,19 @@ from backend.app.pipeline import run_case
 
 
 app = FastAPI(title="PayShield API")
+
+
+# Allow the Next.js frontend to communicate with FastAPI
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 cases: dict[str, Case] = {}

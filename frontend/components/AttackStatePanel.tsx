@@ -6,6 +6,7 @@ import {
   ArrowRight,
   Activity,
   AlertTriangle,
+  Check,
 } from "lucide-react";
 
 interface AttackStatePanelProps {
@@ -134,32 +135,36 @@ export default function AttackStatePanel({
         </div>
 
 
-        <div className="flex flex-col md:flex-row">
+        <div className="flex flex-col md:flex-row md:items-center">
 
           <StateNode
             label="Observed"
             active={hasState}
+            completed={hasState}
           />
 
           <StateConnector />
 
           <StateNode
             label="Correlated"
-            active={false}
+            active={hasState}
+            completed={hasState}
           />
 
           <StateConnector />
 
           <StateNode
             label="Attack state"
-            active={false}
+            active={hasState}
+            completed={hasState}
           />
 
           <StateConnector />
 
           <StateNode
             label="Decision"
-            active={false}
+            active={hasState}
+            completed={hasState}
           />
 
         </div>
@@ -251,23 +256,31 @@ export default function AttackStatePanel({
 function StateNode({
   label,
   active,
+  completed,
 }: {
   label: string;
   active: boolean;
+  completed: boolean;
 }) {
   return (
     <div className="flex items-center gap-2">
 
       <div
-        className={`flex h-8 items-center border px-3 ${
+        className={`flex h-8 items-center gap-2 border px-3 ${
           active
             ? "border-[#17191d] bg-[#17191d] text-white"
             : "border-[#dfe2e6] bg-white text-gray-400"
         }`}
       >
+
+        {completed && (
+          <Check size={12} strokeWidth={2} />
+        )}
+
         <span className="text-[10px] font-medium uppercase tracking-[0.08em]">
           {label}
         </span>
+
       </div>
 
     </div>
