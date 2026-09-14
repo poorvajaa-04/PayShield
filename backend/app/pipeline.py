@@ -1,15 +1,18 @@
 """
-Wires evidence detectors -> entity graph -> correlator -> orchestrator -> explainability
-into one callable pipeline, and implements the correlation experiment toggle
-(Section 5.1).
+PayShield Pipeline
 
-Both modes consult the entity graph LIVE for the per-stream enrichment:
-  - lure -> identifier_in_confirmed_scam
-  - session -> device_linked_to_flagged_account
-  - transaction -> compute_mule_signal
+Wires:
+evidence detectors
+    -> entity graph
+    -> correlator
+    -> orchestrator
+    -> explainability
 
-Correlated mode fuses evidence through the correlator and orchestrator.
-Independent mode keeps each evidence stream as a separate mini-decision.
+Supports:
+- correlated mode
+- independent mode
+- live entity-graph enrichment
+- explicit rejection of unknown pipeline step types
 """
 
 from __future__ import annotations
@@ -39,10 +42,13 @@ def run_case(
     independent_results = []
 
     for step in script:
+
         t = step.get("t")
         step_type = step["type"]
 
-        # ---------- LURE ----------
+        # ==========================================================
+        # LURE
+        # ==========================================================
 
         if step_type == "lure":
 
@@ -54,12 +60,14 @@ def run_case(
             identifier = step.get("identifier")
 
             if correlated:
+
                 correlator.feed_lure(
                     result,
                     identifier=identifier,
                 )
 
             else:
+
                 graph_hit = (
                     bool(identifier)
                     and graph.identifier_in_confirmed_scam(identifier)
@@ -83,7 +91,11 @@ def run_case(
                 mini_action = (
                     "WARN"
                     if probability >= 0.8
-                    else ("MONITOR" if probability >= 0.5 else "NONE")
+                    else (
+                        "MONITOR"
+                        if probability >= 0.5
+                        else "NONE"
+                    )
                 )
 
                 independent_results.append(
@@ -94,7 +106,9 @@ def run_case(
                     }
                 )
 
-        # ---------- NETWORK ----------
+        # ==========================================================
+        # NETWORK
+        # ==========================================================
 
         elif step_type == "network":
 
@@ -106,9 +120,11 @@ def run_case(
             )
 
             if correlated:
+
                 correlator.feed_network(result)
 
             else:
+
                 case.log(
                     "network_anomaly_detected",
                     stream="network",
@@ -131,7 +147,9 @@ def run_case(
                     }
                 )
 
-        # ---------- SESSION ----------
+        # ==========================================================
+        # SESSION
+        # ==========================================================
 
         elif step_type == "session":
 
@@ -146,12 +164,14 @@ def run_case(
             device_id = step.get("device_id")
 
             if correlated:
+
                 correlator.feed_session(
                     result,
                     device_id=device_id,
                 )
 
             else:
+
                 linked = (
                     graph.device_linked_to_flagged_account(device_id)
                     if device_id
@@ -187,7 +207,9 @@ def run_case(
                     }
                 )
 
-        # ---------- TRANSACTION ----------
+        # ==========================================================
+        # TRANSACTION
+        # ==========================================================
 
         elif step_type == "transaction":
 
@@ -253,7 +275,19 @@ def run_case(
                     **signal,
                 )
 
-    # ---------- FINAL DECISION ----------
+        # ==========================================================
+        # UNKNOWN STEP TYPE
+        # ==========================================================
+
+        else:
+
+            raise KeyError(
+                f"Unknown pipeline step type: {step_type}"
+            )
+
+    # ==============================================================
+    # FINAL DECISION
+    # ==============================================================
 
     if correlated:
 
