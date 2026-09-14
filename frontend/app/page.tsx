@@ -19,6 +19,12 @@ interface BackendEvidence {
   triggering_feature?: string;
   amount?: number;
   to_account?: string;
+  is_confirmed_mule?: boolean;
+  community_id?: number | null;
+  confirmed_mules_in_community?: string[];
+  is_structural_hub?: boolean;
+  pagerank?: number;
+  betweenness?: number;
 }
 
 interface BackendTimelineEvent {
@@ -34,6 +40,25 @@ interface BackendTimelineEvent {
   triggering_feature?: string;
   amount?: number;
   to_account?: string;
+}
+
+interface InvestigationData {
+  case_id: string;
+  status: string;
+  evidence: BackendEvidence[];
+  entities: Record<string, unknown>[];
+  timeline: BackendTimelineEvent[];
+  correlations: {
+    type: string;
+    stream?: string;
+    from_state?: string;
+    to_state?: string;
+    reason?: string;
+  }[];
+  attack_state: string | null;
+  risk_index: number | null;
+  policy_decision: string | null;
+  findings: string[];
 }
 
 interface BackendResult {
@@ -92,12 +117,18 @@ const testScript = [
 ];
 
 
-export default function Home() {
+/* =========================================================
+   COMPONENT
+========================================================= */
 
+export default function Home() {
   const [loading, setLoading] = useState(false);
 
   const [result, setResult] =
     useState<BackendResult | null>(null);
+
+  const [investigation, setInvestigation] =
+    useState<InvestigationData | null>(null);
 
   const [error, setError] = useState("");
 
@@ -107,14 +138,27 @@ export default function Home() {
   ========================================================= */
 
   const handleRun = async () => {
-
     setLoading(true);
     setError("");
 
     try {
+      const apiUrl =
+        process.env.NEXT_PUBLIC_API_URL;
+
+      if (!apiUrl) {
+        throw new Error(
+          "NEXT_PUBLIC_API_URL is not configured."
+        );
+      }
+
+
+      /* -----------------------------------------------------
+         STEP 1
+         Run the PayShield case pipeline
+      ----------------------------------------------------- */
 
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/cases/CASE-2026-0142/run`,
+        `${apiUrl}/cases/PS-INV-001/run`,
         {
           method: "POST",
 
@@ -131,38 +175,66 @@ export default function Home() {
 
 
       if (!response.ok) {
-        throw new Error("Backend analysis failed.");
+        throw new Error(
+          "Backend analysis failed."
+        );
       }
 
 
       const data: BackendResult =
         await response.json();
 
-
       setResult(data);
 
-    } catch (err) {
 
+      /* -----------------------------------------------------
+         STEP 2
+         Fetch the investigation created by the backend
+      ----------------------------------------------------- */
+
+      const investigationResponse =
+        await fetch(
+          `${apiUrl}/investigations/PS-INV-001`
+        );
+
+
+      if (!investigationResponse.ok) {
+        throw new Error(
+          "Investigation retrieval failed."
+        );
+      }
+
+
+      const investigationData: InvestigationData =
+        await investigationResponse.json();
+
+      setInvestigation(
+        investigationData
+      );
+
+    } catch (err) {
       console.error(err);
 
       setError(
-        "Backend connection failed. Make sure FastAPI is running on port 8000."
+        err instanceof Error
+          ? err.message
+          : "Backend connection failed."
       );
 
     } finally {
-
       setLoading(false);
-
     }
   };
 
 
   /* =========================================================
-     EXTRACT EVIDENCE
+     USE REAL INVESTIGATION DATA
   ========================================================= */
 
   const evidence =
-    result?.case.evidence ?? [];
+    investigation?.evidence ??
+    result?.case.evidence ??
+    [];
 
 
   const lure =
@@ -190,18 +262,22 @@ export default function Home() {
 
 
   /* =========================================================
-     RISK SCORE
+     RISK INDEX
   ========================================================= */
 
-  const riskScore = result
-    ? Math.round(
-        Math.max(
-          lure?.probability ?? 0,
-          network?.probability ?? 0,
-          session?.anomaly_score ?? 0
-        ) * 100
-      )
-    : undefined;
+  const riskScore =
+    investigation?.risk_index ??
+    (
+      result
+        ? Math.round(
+            Math.max(
+              lure?.probability ?? 0,
+              network?.probability ?? 0,
+              session?.anomaly_score ?? 0
+            ) * 100
+          )
+        : undefined
+    );
 
 
   /* =========================================================
@@ -209,6 +285,7 @@ export default function Home() {
   ========================================================= */
 
   const attackState =
+    investigation?.attack_state ??
     result?.case.attack_state;
 
 
@@ -216,12 +293,17 @@ export default function Home() {
      DECISION
   ========================================================= */
 
+  const finalAction =
+    investigation?.policy_decision ??
+    result?.final_action;
+
+
   const decision =
-    result?.final_action === "TRANSACTION_HOLD"
+    finalAction === "TRANSACTION_HOLD"
       ? "TRANSACTION_HOLD"
-      : result?.final_action === "BLOCK"
+      : finalAction === "BLOCK"
         ? "block"
-        : result?.final_action === "ALLOW"
+        : finalAction === "ALLOW"
           ? "allow"
           : "pending";
 
@@ -231,7 +313,13 @@ export default function Home() {
   ========================================================= */
 
   const timeline =
-    result?.case.timeline ?? [];
+    investigation?.timeline ??
+    result?.case.timeline ??
+    [];
+
+
+  const correlations =
+    investigation?.correlations ?? [];
 
 
   const transitions =
@@ -243,19 +331,35 @@ export default function Home() {
 
 
   const correlationSignals =
-    transitions.map(
-      (event) => ({
-        source: event.stream,
+    correlations.length > 0
+      ? correlations.map(
+          (correlation) => ({
+            source:
+              correlation.stream ??
+              "correlation",
 
-        finding:
-          event.to ??
-          "State transition",
+            finding:
+              correlation.to_state ??
+              "State transition",
 
-        relation:
-          event.reason ??
-          "Cross-stage evidence contributed to state progression.",
-      })
-    );
+            relation:
+              correlation.reason ??
+              "Cross-stage evidence contributed to state progression.",
+          })
+        )
+      : transitions.map(
+          (event) => ({
+            source: event.stream,
+
+            finding:
+              event.to ??
+              "State transition",
+
+            relation:
+              event.reason ??
+              "Cross-stage evidence contributed to state progression.",
+          })
+        );
 
 
   /* =========================================================
@@ -263,19 +367,18 @@ export default function Home() {
   ========================================================= */
 
   const indicators =
-    result
-      ? result.explanation.map(
-          (item) =>
-            item.replace(
-              /^\d+\.\s*/,
-              ""
-            )
+    investigation?.findings ??
+    result?.explanation.map(
+      (item) =>
+        item.replace(
+          /^\d+\.\s*/,
+          ""
         )
-      : [];
+    ) ??
+    [];
 
 
   return (
-
     <div className="min-h-screen bg-[#f4f5f6]">
 
       {/* =====================================================
@@ -332,7 +435,6 @@ export default function Home() {
             ================================================= */}
 
             {error && (
-
               <div className="mb-6 border border-[#e5b4b0] bg-[#fff8f7] px-5 py-4">
 
                 <p className="text-sm font-medium text-[#b42318]">
@@ -340,7 +442,6 @@ export default function Home() {
                 </p>
 
               </div>
-
             )}
 
 
@@ -349,33 +450,35 @@ export default function Home() {
             ================================================= */}
 
             <CaseSummary
-
               caseStatus={
-                result
-                  ? "Analysis complete"
-                  : "Under investigation"
+                investigation?.status ??
+                (
+                  result
+                    ? "Analysis complete"
+                    : "Under investigation"
+                )
               }
 
-
-              evidenceCount={4}
-
+              evidenceCount={
+                evidence.length
+              }
 
               correlationStatus={
-                result
+                investigation
                   ? "Signals correlated"
-                  : "Awaiting analysis"
+                  : result
+                    ? "Signals correlated"
+                    : "Awaiting analysis"
               }
-
 
               decision={
-                result
-                  ? result.final_action
-                  : "Pending"
+                finalAction ??
+                "Pending"
               }
 
-
-              riskScore={riskScore}
-
+              riskScore={
+                riskScore
+              }
             />
 
 
@@ -398,7 +501,7 @@ export default function Home() {
 
 
                 <p className="mt-1 text-xs text-gray-500">
-                  Independent signals · 4 streams
+                  Independent signals · {evidence.length} streams
                 </p>
 
               </div>
@@ -412,16 +515,13 @@ export default function Home() {
                 ================================================= */}
 
                 <EvidencePanel
-
                   type="lure"
-
 
                   status={
                     lure
                       ? "active"
                       : "pending"
                   }
-
 
                   signal={
                     lure
@@ -431,7 +531,6 @@ export default function Home() {
                       : "Awaiting evidence"
                   }
 
-
                   observations={
                     lure
                       ? [
@@ -440,7 +539,6 @@ export default function Home() {
                         ]
                       : []
                   }
-
                 />
 
 
@@ -449,16 +547,13 @@ export default function Home() {
                 ================================================= */}
 
                 <EvidencePanel
-
                   type="network"
-
 
                   status={
                     network
                       ? "active"
                       : "pending"
                   }
-
 
                   signal={
                     network
@@ -468,7 +563,6 @@ export default function Home() {
                       : "Awaiting evidence"
                   }
 
-
                   observations={
                     network
                       ? [
@@ -477,7 +571,6 @@ export default function Home() {
                         ]
                       : []
                   }
-
                 />
 
 
@@ -486,16 +579,13 @@ export default function Home() {
                 ================================================= */}
 
                 <EvidencePanel
-
                   type="transaction"
-
 
                   status={
                     transaction
                       ? "active"
                       : "pending"
                   }
-
 
                   signal={
                     transaction
@@ -505,7 +595,6 @@ export default function Home() {
                       : "Awaiting evidence"
                   }
 
-
                   observations={
                     transaction
                       ? [
@@ -514,7 +603,6 @@ export default function Home() {
                         ]
                       : []
                   }
-
                 />
 
 
@@ -523,16 +611,13 @@ export default function Home() {
                 ================================================= */}
 
                 <EvidencePanel
-
                   type="device"
-
 
                   status={
                     session
                       ? "active"
                       : "pending"
                   }
-
 
                   signal={
                     session
@@ -542,7 +627,6 @@ export default function Home() {
                       : "Awaiting evidence"
                   }
 
-
                   observations={
                     session
                       ? [
@@ -551,7 +635,6 @@ export default function Home() {
                         ]
                       : []
                   }
-
                 />
 
               </div>
@@ -575,25 +658,25 @@ export default function Home() {
 
 
               <CorrelationPanel
-
                 status={
-                  result
+                  investigation
                     ? "detected"
-                    : "pending"
+                    : result
+                      ? "detected"
+                      : "pending"
                 }
-
 
                 summary={
-                  result
-                    ? `${transitions.length} attack-state transitions were observed as evidence accumulated across the case.`
-                    : undefined
+                  investigation
+                    ? `${correlations.length} cross-stage correlations were recorded as the case progressed.`
+                    : result
+                      ? `${transitions.length} attack-state transitions were observed as evidence accumulated across the case.`
+                      : undefined
                 }
-
 
                 signals={
                   correlationSignals
                 }
-
               />
 
             </section>
@@ -615,7 +698,12 @@ export default function Home() {
 
 
               <EntityGraphPanel
-                connected={Boolean(result)}
+                connected={
+                  Boolean(
+                    investigation ||
+                    result
+                  )
+                }
               />
 
             </section>
@@ -637,28 +725,25 @@ export default function Home() {
 
 
               <AttackStatePanel
-
                 state={
                   attackState
                 }
-
 
                 confidence={
                   riskScore
                 }
 
-
                 description={
-                  result
-                    ? `The case progressed through ${transitions.length} correlated state transitions and reached ${attackState}.`
-                    : undefined
+                  investigation
+                    ? `The case progressed through ${correlations.length} correlated state transitions and reached ${attackState}.`
+                    : result
+                      ? `The case progressed through ${transitions.length} correlated state transitions and reached ${attackState}.`
+                      : undefined
                 }
-
 
                 indicators={
                   indicators
                 }
-
               />
 
             </section>
@@ -680,25 +765,20 @@ export default function Home() {
 
 
               <DecisionPanel
-
                 decision={
                   decision
                 }
 
-
                 reason={
-                  result
-                    ? result.final_action
-                    : undefined
+                  finalAction ??
+                  undefined
                 }
-
 
                 actions={
-                  result
-                    ? [result.final_action]
+                  finalAction
+                    ? [finalAction]
                     : []
                 }
-
               />
 
             </section>
@@ -708,10 +788,9 @@ export default function Home() {
                 EXPLAINABILITY
             ================================================= */}
 
-            {result && (
+            {investigation && (
 
               <section className="mt-10 border border-[#dfe2e6] bg-white">
-
 
                 <div className="border-b border-[#e5e7eb] px-5 py-4">
 
@@ -729,7 +808,7 @@ export default function Home() {
 
                 <div className="divide-y divide-[#e5e7eb]">
 
-                  {result.explanation.map(
+                  {indicators.map(
                     (item, index) => (
 
                       <div
@@ -738,21 +817,17 @@ export default function Home() {
                       >
 
                         <span className="font-mono text-[10px] text-gray-400">
-
                           {String(
                             index + 1
                           ).padStart(2, "0")}
-
                         </span>
 
 
                         <p className="text-sm leading-6 text-gray-600">
-
                           {item.replace(
                             /^\d+\.\s*/,
                             ""
                           )}
-
                         </p>
 
                       </div>
@@ -773,7 +848,6 @@ export default function Home() {
 
             <section className="mt-10 mb-10 border border-[#dfe2e6] bg-white">
 
-
               <div className="px-5 py-4">
 
                 <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-gray-400">
@@ -789,7 +863,6 @@ export default function Home() {
 
 
               <div className="grid grid-cols-1 divide-y divide-[#e5e7eb] md:grid-cols-4 md:divide-x md:divide-y-0">
-
 
                 {[
                   [
@@ -852,7 +925,6 @@ export default function Home() {
                       </p>
 
                     </div>
-
                   )
                 )}
 
@@ -882,6 +954,5 @@ export default function Home() {
       </main>
 
     </div>
-
   );
 }
