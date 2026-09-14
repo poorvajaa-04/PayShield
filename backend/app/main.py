@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from backend.app.models.case import Case, TimelineEvent
 from backend.app.entity_graph.entity_graph import EntityGraph
 from backend.app.pipeline import run_case
+from backend.app.investigations.builder import build_investigation_case
 
 
 app = FastAPI(title="PayShield API")
@@ -20,7 +21,9 @@ app.add_middleware(
 )
 
 
+# In-memory prototype storage
 cases: dict[str, Case] = {}
+investigations = {}
 
 
 class RunCaseRequest(BaseModel):
@@ -78,6 +81,7 @@ def run_existing_case(
     graph = EntityGraph()
 
     try:
+        # Run the existing PayShield detection/correlation pipeline
         result = run_case(
             case_id=case_id,
             script=request.script,
@@ -85,6 +89,17 @@ def run_existing_case(
             correlated=request.correlated,
         )
 
+        # Build the investigation representation from the
+        # exact result and entity graph used for this case
+        investigation = build_investigation_case(
+            result,
+            graph,
+        )
+
+        # Store investigation for later retrieval
+        investigations[case_id] = investigation
+
+        # Preserve the existing API response
         return result
 
     except KeyError as exc:
@@ -98,3 +113,16 @@ def run_existing_case(
             status_code=500,
             detail=str(exc),
         )
+
+
+@app.get("/investigations/{case_id}")
+def get_investigation(case_id: str):
+    investigation = investigations.get(case_id)
+
+    if investigation is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Investigation not found",
+        )
+
+    return investigation
