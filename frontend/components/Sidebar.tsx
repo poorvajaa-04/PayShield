@@ -8,11 +8,15 @@ import {
   Shield,
   Clock3,
 } from "lucide-react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 export default function Sidebar() {
+  const pathname = usePathname();
+
   return (
     <aside className="fixed left-0 top-0 flex h-screen w-64 flex-col border-r border-[#dfe2e6] bg-white">
-      
+
       {/* Brand */}
       <div className="flex h-20 items-center border-b border-[#dfe2e6] px-6">
         <div className="mr-3 flex h-9 w-9 items-center justify-center bg-[#17191d] text-white">
@@ -37,29 +41,38 @@ export default function Sidebar() {
         </p>
 
         <NavItem
+          href="/"
           icon={<Activity size={16} />}
           label="Overview"
-          active
+          active={pathname === "/"}
         />
 
         <NavItem
+          href="/investigations"
           icon={<Shield size={16} />}
           label="Investigations"
+          active={pathname.startsWith("/investigations")}
         />
 
         <NavItem
+          href="/entity-graph"
           icon={<Network size={16} />}
           label="Entity Graph"
+          active={pathname.startsWith("/entity-graph")}
         />
 
         <NavItem
+          href="/attack-state"
           icon={<GitBranch size={16} />}
           label="Attack State"
+          active={pathname.startsWith("/attack-state")}
         />
 
         <NavItem
+          href="/timeline"
           icon={<Clock3 size={16} />}
           label="Timeline"
+          active={pathname.startsWith("/timeline")}
         />
       </nav>
 
@@ -67,8 +80,10 @@ export default function Sidebar() {
       <div className="border-t border-[#dfe2e6] p-3">
 
         <NavItem
+          href="/settings"
           icon={<Settings size={16} />}
           label="Settings"
+          active={pathname.startsWith("/settings")}
         />
 
         {/* Engine status */}
@@ -94,16 +109,19 @@ export default function Sidebar() {
 /* Navigation item */
 
 function NavItem({
+  href,
   icon,
   label,
   active = false,
 }: {
+  href: string;
   icon: React.ReactNode;
   label: string;
   active?: boolean;
 }) {
   return (
-    <button
+    <Link
+      href={href}
       className={`mb-1 flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition ${
         active
           ? "bg-[#17191d] text-white"
@@ -113,6 +131,6 @@ function NavItem({
       {icon}
 
       <span>{label}</span>
-    </button>
+    </Link>
   );
 }

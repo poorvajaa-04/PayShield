@@ -6,6 +6,7 @@ from backend.app.models.case import Case, TimelineEvent
 from backend.app.entity_graph.entity_graph import EntityGraph
 from backend.app.pipeline import run_case
 from backend.app.investigations.builder import build_investigation_case
+from backend.app.data.real_case import build_real_case
 
 
 app = FastAPI(title="PayShield API")
@@ -71,6 +72,45 @@ def get_case(case_id: str):
         )
 
     return case
+
+
+@app.get("/cases/{case_id}/demo")
+def get_real_case_demo(case_id: str):
+    """
+    Build a dataset-backed PayShield demonstration case.
+
+    CIC-IDS2017 supplies network evidence.
+    PaySim supplies transaction evidence.
+    """
+
+    if case_id != "PS-REAL-001":
+        raise HTTPException(
+            status_code=404,
+            detail="Real demo case not found",
+        )
+
+    try:
+        script = build_real_case(
+            case_id=case_id,
+        )
+
+        return {
+            "case_id": case_id,
+            "source": "CIC-IDS2017 + PaySim",
+            "script": script,
+        }
+
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=str(exc),
+        )
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=str(exc),
+        )
 
 
 @app.post("/cases/{case_id}/run")
