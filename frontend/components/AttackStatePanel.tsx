@@ -11,14 +11,12 @@ import {
 
 interface AttackStatePanelProps {
   state?: string;
-  confidence?: number;
   description?: string;
   indicators?: string[];
 }
 
 export default function AttackStatePanel({
   state = "Awaiting correlation",
-  confidence,
   description = "The attack state will be determined after cross-stage evidence correlation.",
   indicators = [],
 }: AttackStatePanelProps) {
@@ -70,7 +68,7 @@ export default function AttackStatePanel({
 
 
       {/* Current state */}
-      <div className="grid grid-cols-1 border-b border-[#e5e7eb] md:grid-cols-[1fr_220px]">
+      <div className="border-b border-[#e5e7eb]">
 
         <div className="px-5 py-6">
 
@@ -82,36 +80,8 @@ export default function AttackStatePanel({
             {state}
           </h3>
 
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-500">
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-500">
             {description}
-          </p>
-
-        </div>
-
-
-        {/* Confidence */}
-        <div className="border-t border-[#e5e7eb] px-5 py-6 md:border-l md:border-t-0">
-
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400">
-            Confidence
-          </p>
-
-          <div className="mt-3 flex items-end gap-1">
-
-            <span className="text-2xl font-semibold tracking-tight text-[#17191d]">
-              {confidence !== undefined ? confidence : "—"}
-            </span>
-
-            {confidence !== undefined && (
-              <span className="mb-1 text-xs text-gray-400">
-                %
-              </span>
-            )}
-
-          </div>
-
-          <p className="mt-1 text-[11px] text-gray-400">
-            Derived from correlated evidence
           </p>
 
         </div>
@@ -178,6 +148,7 @@ export default function AttackStatePanel({
         <div className="flex items-center justify-between">
 
           <div>
+
             <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400">
               Supporting indicators
             </p>
@@ -185,6 +156,7 @@ export default function AttackStatePanel({
             <p className="mt-1 text-xs text-gray-500">
               Evidence contributing to the current attack state
             </p>
+
           </div>
 
           <Activity
@@ -211,6 +183,7 @@ export default function AttackStatePanel({
           <div className="mt-4 space-y-2">
 
             {indicators.map((indicator, index) => (
+
               <div
                 key={index}
                 className="flex items-start gap-3 border border-[#e5e7eb] px-4 py-3"
@@ -223,6 +196,7 @@ export default function AttackStatePanel({
                 </span>
 
               </div>
+
             ))}
 
           </div>

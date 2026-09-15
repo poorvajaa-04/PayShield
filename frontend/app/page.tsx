@@ -11,6 +11,11 @@ import EntityGraphPanel from "@/components/EntityGraphPanel";
 import AttackStatePanel from "@/components/AttackStatePanel";
 import DecisionPanel from "@/components/DecisionPanel";
 
+
+/* =========================================================
+   BACKEND TYPES
+========================================================= */
+
 interface BackendEvidence {
   stream: string;
   probability?: number;
@@ -30,7 +35,7 @@ interface BackendEvidence {
 interface BackendTimelineEvent {
   t: string;
   event: string;
-  stream: string;
+  stream?: string;
   from_state?: string;
   to?: string;
   reason?: string;
@@ -56,7 +61,7 @@ interface InvestigationData {
     reason?: string;
   }[];
   attack_state: string | null;
-  risk_index: number | null;
+  risk_index?: number | null;
   policy_decision: string | null;
   findings: string[];
 }
@@ -121,8 +126,8 @@ export default function Home() {
 
       /* -----------------------------------------------------
          STEP 1
-         Ask the backend to build the real dataset-backed case.
-         
+         Build the real dataset-backed case.
+
          CIC-IDS2017 -> network evidence
          PaySim      -> transaction evidence
       ----------------------------------------------------- */
@@ -254,25 +259,6 @@ export default function Home() {
 
 
   /* =========================================================
-     RISK INDEX
-  ========================================================= */
-
-  const riskScore =
-    investigation?.risk_index ??
-    (
-      result
-        ? Math.round(
-            Math.max(
-              lure?.probability ?? 0,
-              network?.probability ?? 0,
-              session?.anomaly_score ?? 0
-            ) * 100
-          )
-        : undefined
-    );
-
-
-  /* =========================================================
      ATTACK STATE
   ========================================================= */
 
@@ -282,7 +268,7 @@ export default function Home() {
 
 
   /* =========================================================
-     DECISION
+     POLICY DECISION
   ========================================================= */
 
   const finalAction =
@@ -341,7 +327,9 @@ export default function Home() {
         )
       : transitions.map(
           (event) => ({
-            source: event.stream,
+            source:
+              event.stream ??
+              "correlation",
 
             finding:
               event.to ??
@@ -370,8 +358,13 @@ export default function Home() {
     [];
 
 
+  /* =========================================================
+     PAGE
+  ========================================================= */
+
   return (
     <div className="min-h-screen bg-[#f4f5f6]">
+
 
       {/* =====================================================
           SIDEBAR
@@ -381,6 +374,7 @@ export default function Home() {
 
 
       <main className="ml-64 min-h-screen">
+
 
         {/* ===================================================
             HEADER
@@ -427,6 +421,7 @@ export default function Home() {
             ================================================= */}
 
             {error && (
+
               <div className="mb-6 border border-[#e5b4b0] bg-[#fff8f7] px-5 py-4">
 
                 <p className="text-sm font-medium text-[#b42318]">
@@ -434,6 +429,7 @@ export default function Home() {
                 </p>
 
               </div>
+
             )}
 
 
@@ -466,10 +462,6 @@ export default function Home() {
               decision={
                 finalAction ??
                 "Pending"
-              }
-
-              riskScore={
-                riskScore
               }
             />
 
@@ -721,10 +713,6 @@ export default function Home() {
                   attackState
                 }
 
-                confidence={
-                  riskScore
-                }
-
                 description={
                   investigation
                     ? `The case progressed through ${correlations.length} correlated state transitions and reached ${attackState}.`
@@ -784,6 +772,7 @@ export default function Home() {
 
               <section className="mt-10 border border-[#dfe2e6] bg-white">
 
+
                 <div className="border-b border-[#e5e7eb] px-5 py-4">
 
                   <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-gray-400">
@@ -840,6 +829,7 @@ export default function Home() {
 
             <section className="mt-10 mb-10 border border-[#dfe2e6] bg-white">
 
+
               <div className="px-5 py-4">
 
                 <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-gray-400">
@@ -855,6 +845,7 @@ export default function Home() {
 
 
               <div className="grid grid-cols-1 divide-y divide-[#e5e7eb] md:grid-cols-4 md:divide-x md:divide-y-0">
+
 
                 {[
                   [
@@ -917,6 +908,7 @@ export default function Home() {
                       </p>
 
                     </div>
+
                   )
                 )}
 
