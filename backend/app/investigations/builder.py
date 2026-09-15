@@ -18,7 +18,7 @@ def build_investigation_case(result: dict, graph) -> InvestigationCase:
         timeline=timeline,
         correlations=correlations,
         attack_state=case.get("attack_state"),
-        risk_index=None,
+        risk_index=case.get("risk_index"),
         policy_decision=case.get("final_action"),
         findings=result.get("explanation", []),
     )
