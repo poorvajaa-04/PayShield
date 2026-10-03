@@ -1,3 +1,4 @@
+import traceback
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -251,10 +252,13 @@ def run_existing_case(
         )
 
     except Exception as exc:
+        traceback.print_exc()
+
         raise HTTPException(
             status_code=500,
             detail=str(exc),
         )
+
 
 
 # =====================================================================
