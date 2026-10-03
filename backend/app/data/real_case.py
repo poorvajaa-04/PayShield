@@ -43,6 +43,10 @@ def build_prototype_case(
         - policy decision
 
     Those are produced by the existing PayShield pipeline.
+
+    The prototype evidence also carries the entity relationships that
+    are observed as part of the case. The pipeline uses these fields
+    to populate the existing EntityGraph implementation.
     """
 
     return [
@@ -53,6 +57,8 @@ def build_prototype_case(
                 "Share the OTP immediately or your account will be blocked."
             ),
             "identifier": "9876500000",
+            "identifier_kind": "phone",
+            "account_id": "ACC-1001",
             "t": "10:31",
         },
         {
@@ -69,6 +75,7 @@ def build_prototype_case(
             "login_hour_local": 2,
             "remote_access_tool_detected": True,
             "device_id": "device-attack-01",
+            "account_id": "ACC-1001",
             "t": "10:34",
         },
         {

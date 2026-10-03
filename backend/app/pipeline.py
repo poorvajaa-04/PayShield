@@ -2,17 +2,26 @@
 PayShield Pipeline
 
 Wires:
-evidence detectors
-    -> entity graph
-    -> correlator
-    -> orchestrator
-    -> explainability
+
+    evidence detectors
+        ↓
+    entity graph
+        ↓
+    correlator
+        ↓
+    orchestrator
+        ↓
+    explainability
 
 Supports:
 - correlated mode
 - independent mode
 - live entity-graph enrichment
 - explicit rejection of unknown pipeline step types
+
+The pipeline is responsible for passing the timestamp attached to each
+evidence event into the correlator so that the Case timeline represents
+the actual chronology of the investigation.
 """
 
 from __future__ import annotations
@@ -64,6 +73,7 @@ def run_case(
                 correlator.feed_lure(
                     result,
                     identifier=identifier,
+                    t=t,
                 )
 
             else:
@@ -121,7 +131,10 @@ def run_case(
 
             if correlated:
 
-                correlator.feed_network(result)
+                correlator.feed_network(
+                    result,
+                    t=t,
+                )
 
             else:
 
@@ -168,6 +181,7 @@ def run_case(
                 correlator.feed_session(
                     result,
                     device_id=device_id,
+                    t=t,
                 )
 
             else:

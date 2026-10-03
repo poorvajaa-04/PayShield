@@ -1,16 +1,82 @@
-from dataclasses import dataclass, field
+from __future__ import annotations
+
 from typing import Any
 
+from pydantic import BaseModel, Field
 
-@dataclass
-class InvestigationCase:
+
+class InvestigationCase(BaseModel):
+    """
+    Backend representation of a PayShield investigation.
+
+    This model is a read-oriented projection of the actual case,
+    correlation, entity graph, timeline, and policy results produced
+    by the PayShield pipeline.
+
+    It does not independently calculate security decisions.
+    """
+
     case_id: str
-    status: str
-    evidence: list[dict[str, Any]] = field(default_factory=list)
-    entities: list[dict[str, Any]] = field(default_factory=list)
-    timeline: list[dict[str, Any]] = field(default_factory=list)
-    correlations: list[dict[str, Any]] = field(default_factory=list)
+
+    status: str = "Under Investigation"
+
+    # ---------------------------------------------------------------
+    # Evidence
+    # ---------------------------------------------------------------
+
+    evidence: list[dict[str, Any]] = Field(
+        default_factory=list
+    )
+
+    # ---------------------------------------------------------------
+    # Entity graph
+    # ---------------------------------------------------------------
+
+    entities: list[dict[str, Any]] = Field(
+        default_factory=list
+    )
+
+    edges: list[dict[str, Any]] = Field(
+        default_factory=list
+    )
+
+    # ---------------------------------------------------------------
+    # Temporal / correlation information
+    # ---------------------------------------------------------------
+
+    timeline: list[dict[str, Any]] = Field(
+        default_factory=list
+    )
+
+    correlations: list[dict[str, Any]] = Field(
+        default_factory=list
+    )
+
+    # ---------------------------------------------------------------
+    # Attack-state information
+    # ---------------------------------------------------------------
+
     attack_state: str | None = None
-    risk_index: int | None = None
+
+    # ---------------------------------------------------------------
+    # Risk information
+    #
+    # Kept optional because the current pipeline does not necessarily
+    # calculate a numerical risk index.
+    # ---------------------------------------------------------------
+
+    risk_index: float | int | None = None
+
+    # ---------------------------------------------------------------
+    # Policy / orchestration
+    # ---------------------------------------------------------------
+
     policy_decision: str | None = None
-    findings: list[str] = field(default_factory=list)
+
+    # ---------------------------------------------------------------
+    # Explainability
+    # ---------------------------------------------------------------
+
+    findings: list[Any] = Field(
+        default_factory=list
+    )
