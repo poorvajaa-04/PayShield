@@ -115,6 +115,17 @@ export default function EntityGraphPage() {
   /*
    * =========================================================
    * GRAPH MODEL
+   *
+   * Backend relationship model:
+   *
+   * ACC-1001
+   *    ├── phone_link   → 9876500000
+   *    ├── device_link  → device-attack-01
+   *    └── transaction  → ACC-9001
+   *
+   * The transaction remains an edge in the backend.
+   * For visualization, it is displayed as a transaction
+   * node containing the transaction amount.
    * =========================================================
    */
 
@@ -456,7 +467,9 @@ export default function EntityGraphPage() {
                           </defs>
 
 
-                          {/* PHONE → ACCOUNT */}
+                          {/* =================================================
+                              PHONE → SOURCE ACCOUNT
+                          ================================================= */}
 
                           {graphNodes.sourceAccount &&
                             graphNodes.phone && (
@@ -472,7 +485,9 @@ export default function EntityGraphPage() {
                             )}
 
 
-                          {/* DEVICE → ACCOUNT */}
+                          {/* =================================================
+                              DEVICE → SOURCE ACCOUNT
+                          ================================================= */}
 
                           {graphNodes.sourceAccount &&
                             graphNodes.device && (
@@ -488,7 +503,12 @@ export default function EntityGraphPage() {
                             )}
 
 
-                          {/* ACCOUNT → TRANSACTION */}
+                          {/* =================================================
+                              SOURCE ACCOUNT → TRANSACTION
+                              
+                              IMPORTANT:
+                              No relationship label here.
+                          ================================================= */}
 
                           {graphNodes.sourceAccount &&
                             graphNodes.transactionEdge && (
@@ -505,7 +525,12 @@ export default function EntityGraphPage() {
                             )}
 
 
-                          {/* TRANSACTION → RECIPIENT */}
+                          {/* =================================================
+                              TRANSACTION → RECIPIENT
+                              
+                              IMPORTANT:
+                              No relationship label here.
+                          ================================================= */}
 
                           {graphNodes.recipient &&
                             graphNodes.transactionEdge && (
@@ -524,7 +549,9 @@ export default function EntityGraphPage() {
                         </svg>
 
 
-                        {/* PHONE NODE */}
+                        {/* =================================================
+                            PHONE NODE
+                        ================================================= */}
 
                         {graphNodes.phone && (
 
@@ -538,7 +565,9 @@ export default function EntityGraphPage() {
                         )}
 
 
-                        {/* DEVICE NODE */}
+                        {/* =================================================
+                            DEVICE NODE
+                        ================================================= */}
 
                         {graphNodes.device && (
 
@@ -552,7 +581,9 @@ export default function EntityGraphPage() {
                         )}
 
 
-                        {/* SOURCE ACCOUNT */}
+                        {/* =================================================
+                            SOURCE ACCOUNT
+                        ================================================= */}
 
                         {graphNodes.sourceAccount && (
 
@@ -566,7 +597,9 @@ export default function EntityGraphPage() {
                         )}
 
 
-                        {/* TRANSACTION */}
+                        {/* =================================================
+                            TRANSACTION NODE
+                        ================================================= */}
 
                         {graphNodes.transactionEdge && (
 
@@ -580,7 +613,9 @@ export default function EntityGraphPage() {
                         )}
 
 
-                        {/* RECIPIENT */}
+                        {/* =================================================
+                            RECIPIENT ACCOUNT
+                        ================================================= */}
 
                         {graphNodes.recipient && (
 
@@ -972,6 +1007,8 @@ function TransactionNode({
       className={`z-10 flex w-[120px] flex-col items-center text-center ${className}`}
     >
 
+      {/* TRANSACTION CIRCLE */}
+
       <div className="flex h-12 w-12 items-center justify-center rounded-full border border-[#17191d] bg-[#17191d] font-mono text-[11px] font-semibold text-white">
         ₹
       </div>
@@ -1077,6 +1114,14 @@ function GraphEdge({
             : "url(#arrow-normal)"
         }
       />
+
+      {/* =================================================
+          RELATIONSHIP LABEL
+
+          Only rendered when showLabel=true.
+          Transaction and recipient edges use
+          showLabel=false.
+      ================================================= */}
 
       {showLabel && label && (
 

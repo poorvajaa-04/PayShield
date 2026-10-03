@@ -22,6 +22,10 @@ Supports:
 The pipeline is responsible for passing the timestamp attached to each
 evidence event into the correlator so that the Case timeline represents
 the actual chronology of the investigation.
+
+The pipeline also registers entity relationships observed directly in
+the evidence with the existing EntityGraph before the correlator uses
+that graph for enrichment.
 """
 
 from __future__ import annotations
@@ -67,6 +71,21 @@ def run_case(
             )
 
             identifier = step.get("identifier")
+            account_id = step.get("account_id")
+            identifier_kind = step.get("identifier_kind")
+
+            # Register the observed account <-> identifier
+            # relationship in the existing EntityGraph.
+            if (
+                account_id
+                and identifier
+                and identifier_kind in {"phone", "vpa"}
+            ):
+                graph.add_shared_identifier_link(
+                    account_id,
+                    str(identifier),
+                    identifier_kind,
+                )
 
             if correlated:
 
@@ -175,6 +194,15 @@ def run_case(
             )
 
             device_id = step.get("device_id")
+            account_id = step.get("account_id")
+
+            # Register the observed account <-> device relationship
+            # in the existing EntityGraph.
+            if account_id and device_id:
+                graph.add_shared_device_link(
+                    account_id,
+                    str(device_id),
+                )
 
             if correlated:
 

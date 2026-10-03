@@ -11,7 +11,6 @@ import EntityGraphPanel from "@/components/EntityGraphPanel";
 import AttackStatePanel from "@/components/AttackStatePanel";
 import DecisionPanel from "@/components/DecisionPanel";
 
-
 /* =========================================================
    BACKEND TYPES
 ========================================================= */
@@ -47,12 +46,35 @@ interface BackendTimelineEvent {
   to_account?: string;
 }
 
+interface BackendEntity {
+  id: string;
+  kind: string;
+  confirmed_mule?: boolean;
+  dismissed?: boolean;
+  risk_tier?: number;
+}
+
+interface BackendEdge {
+  source: string;
+  target: string;
+  kind: string;
+  tx_count?: number;
+  tx_amount?: number;
+  last_ts?: string;
+}
+
 interface InvestigationData {
   case_id: string;
   status: string;
+
   evidence: BackendEvidence[];
-  entities: Record<string, unknown>[];
+
+  entities: BackendEntity[];
+
+  edges: BackendEdge[];
+
   timeline: BackendTimelineEvent[];
+
   correlations: {
     type: string;
     stream?: string;
@@ -60,9 +82,13 @@ interface InvestigationData {
     to_state?: string;
     reason?: string;
   }[];
+
   attack_state: string | null;
+
   risk_index?: number | null;
+
   policy_decision: string | null;
+
   findings: string[];
 }
 
@@ -78,6 +104,7 @@ interface BackendResult {
   };
 
   final_action: string;
+
   explanation: string[];
 }
 
@@ -87,7 +114,6 @@ interface RealCaseResponse {
     [key: string]: unknown;
   }[];
 }
-
 
 /* =========================================================
    COMPONENT
@@ -103,7 +129,6 @@ export default function Home() {
     useState<InvestigationData | null>(null);
 
   const [error, setError] = useState("");
-
 
   /* =========================================================
      RUN REAL PAYSHIELD ANALYSIS
@@ -122,7 +147,6 @@ export default function Home() {
           "NEXT_PUBLIC_API_URL is not configured."
         );
       }
-
 
       /* -----------------------------------------------------
          STEP 1
@@ -146,7 +170,6 @@ export default function Home() {
       const realCase: RealCaseResponse =
         await realCaseResponse.json();
 
-
       /* -----------------------------------------------------
          STEP 2
          Run the actual PayShield pipeline
@@ -169,19 +192,16 @@ export default function Home() {
           }
         );
 
-
       if (!response.ok) {
         throw new Error(
           "Backend analysis failed."
         );
       }
 
-
       const data: BackendResult =
         await response.json();
 
       setResult(data);
-
 
       /* -----------------------------------------------------
          STEP 3
@@ -193,13 +213,11 @@ export default function Home() {
           `${apiUrl}/investigations/PS-REAL-001`
         );
 
-
       if (!investigationResponse.ok) {
         throw new Error(
           "Investigation retrieval failed."
         );
       }
-
 
       const investigationData:
         InvestigationData =
@@ -223,7 +241,6 @@ export default function Home() {
     }
   };
 
-
   /* =========================================================
      USE REAL INVESTIGATION DATA
   ========================================================= */
@@ -233,39 +250,52 @@ export default function Home() {
     result?.case.evidence ??
     [];
 
-
   const lure =
     evidence.find(
-      (item) => item.stream === "lure"
+      (item) =>
+        item.stream === "lure"
     );
-
 
   const network =
     evidence.find(
-      (item) => item.stream === "network"
+      (item) =>
+        item.stream === "network"
     );
-
 
   const session =
     evidence.find(
-      (item) => item.stream === "session"
+      (item) =>
+        item.stream === "session"
     );
-
 
   const transaction =
     evidence.find(
-      (item) => item.stream === "entity_graph"
+      (item) =>
+        item.stream === "entity_graph"
     );
 
+  /* =========================================================
+     ENTITY GRAPH DATA
+  ========================================================= */
+
+  const graphEntities =
+    investigation?.entities ?? [];
+
+  const graphEdges =
+    investigation?.edges ?? [];
 
   /* =========================================================
      ATTACK STATE
+     
+     IMPORTANT:
+     Convert null -> undefined because
+     AttackStatePanel expects string | undefined.
   ========================================================= */
 
   const attackState =
     investigation?.attack_state ??
-    result?.case.attack_state;
-
+    result?.case.attack_state ??
+    undefined;
 
   /* =========================================================
      POLICY DECISION
@@ -273,8 +303,8 @@ export default function Home() {
 
   const finalAction =
     investigation?.policy_decision ??
-    result?.final_action;
-
+    result?.final_action ??
+    undefined;
 
   const decision =
     finalAction === "TRANSACTION_HOLD"
@@ -285,7 +315,6 @@ export default function Home() {
           ? "allow"
           : "pending";
 
-
   /* =========================================================
      TIMELINE / CORRELATION
   ========================================================= */
@@ -295,10 +324,9 @@ export default function Home() {
     result?.case.timeline ??
     [];
 
-
   const correlations =
-    investigation?.correlations ?? [];
-
+    investigation?.correlations ??
+    [];
 
   const transitions =
     timeline.filter(
@@ -306,7 +334,6 @@ export default function Home() {
         event.event ===
         "attack_state_transition"
     );
-
 
   const correlationSignals =
     correlations.length > 0
@@ -341,7 +368,6 @@ export default function Home() {
           })
         );
 
-
   /* =========================================================
      EXPLAINABILITY
   ========================================================= */
@@ -357,7 +383,6 @@ export default function Home() {
     ) ??
     [];
 
-
   /* =========================================================
      PAGE
   ========================================================= */
@@ -365,16 +390,13 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-[#f4f5f6]">
 
-
       {/* =====================================================
           SIDEBAR
       ===================================================== */}
 
       <Sidebar />
 
-
       <main className="ml-64 min-h-screen">
-
 
         {/* ===================================================
             HEADER
@@ -385,11 +407,9 @@ export default function Home() {
           loading={loading}
         />
 
-
         <div className="px-8 py-8">
 
           <div className="mx-auto max-w-[1500px]">
-
 
             {/* =================================================
                 PAGE HEADING
@@ -401,11 +421,9 @@ export default function Home() {
                 Investigation workspace
               </p>
 
-
               <h1 className="mt-2 text-3xl font-semibold tracking-tight text-[#17191d]">
                 Case intelligence
               </h1>
-
 
               <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-500">
                 Review how independent evidence streams
@@ -414,7 +432,6 @@ export default function Home() {
               </p>
 
             </div>
-
 
             {/* =================================================
                 ERROR
@@ -431,7 +448,6 @@ export default function Home() {
               </div>
 
             )}
-
 
             {/* =================================================
                 CASE SUMMARY
@@ -465,7 +481,6 @@ export default function Home() {
               }
             />
 
-
             {/* =================================================
                 EVIDENCE LAYER
             ================================================= */}
@@ -478,11 +493,9 @@ export default function Home() {
                   Evidence layer
                 </p>
 
-
                 <h2 className="mt-1 text-xl font-semibold text-[#17191d]">
                   Evidence streams
                 </h2>
-
 
                 <p className="mt-1 text-xs text-gray-500">
                   Independent signals · {evidence.length} streams
@@ -490,9 +503,7 @@ export default function Home() {
 
               </div>
 
-
               <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-
 
                 {/* =================================================
                     LURE
@@ -525,7 +536,6 @@ export default function Home() {
                   }
                 />
 
-
                 {/* =================================================
                     NETWORK
                 ================================================= */}
@@ -557,7 +567,6 @@ export default function Home() {
                   }
                 />
 
-
                 {/* =================================================
                     TRANSACTION
                 ================================================= */}
@@ -588,7 +597,6 @@ export default function Home() {
                       : []
                   }
                 />
-
 
                 {/* =================================================
                     DEVICE / SESSION
@@ -625,7 +633,6 @@ export default function Home() {
 
             </section>
 
-
             {/* =================================================
                 CORRELATION LAYER
             ================================================= */}
@@ -640,8 +647,8 @@ export default function Home() {
 
               </div>
 
-
               <CorrelationPanel
+
                 status={
                   investigation
                     ? "detected"
@@ -661,10 +668,10 @@ export default function Home() {
                 signals={
                   correlationSignals
                 }
+
               />
 
             </section>
-
 
             {/* =================================================
                 ENTITY LAYER
@@ -680,18 +687,26 @@ export default function Home() {
 
               </div>
 
-
               <EntityGraphPanel
+
                 connected={
                   Boolean(
-                    investigation ||
-                    result
+                    investigation &&
+                    graphEntities.length > 0
                   )
                 }
+
+                entities={
+                  graphEntities
+                }
+
+                edges={
+                  graphEdges
+                }
+
               />
 
             </section>
-
 
             {/* =================================================
                 ATTACK STATE
@@ -707,27 +722,27 @@ export default function Home() {
 
               </div>
 
-
               <AttackStatePanel
+
                 state={
                   attackState
                 }
 
                 description={
                   investigation
-                    ? `The case progressed through ${correlations.length} correlated state transitions and reached ${attackState}.`
+                    ? `The case progressed through ${correlations.length} correlated state transitions and reached ${attackState ?? "the current state"}.`
                     : result
-                      ? `The case progressed through ${transitions.length} correlated state transitions and reached ${attackState}.`
+                      ? `The case progressed through ${transitions.length} correlated state transitions and reached ${attackState ?? "the current state"}.`
                       : undefined
                 }
 
                 indicators={
                   indicators
                 }
+
               />
 
             </section>
-
 
             {/* =================================================
                 POLICY DECISION
@@ -743,8 +758,8 @@ export default function Home() {
 
               </div>
 
-
               <DecisionPanel
+
                 decision={
                   decision
                 }
@@ -759,10 +774,10 @@ export default function Home() {
                     ? [finalAction]
                     : []
                 }
+
               />
 
             </section>
-
 
             {/* =================================================
                 EXPLAINABILITY
@@ -772,20 +787,17 @@ export default function Home() {
 
               <section className="mt-10 border border-[#dfe2e6] bg-white">
 
-
                 <div className="border-b border-[#e5e7eb] px-5 py-4">
 
                   <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-gray-400">
                     Explainability
                   </p>
 
-
                   <h2 className="mt-1 text-lg font-semibold text-[#17191d]">
                     Why PayShield reached this result
                   </h2>
 
                 </div>
-
 
                 <div className="divide-y divide-[#e5e7eb]">
 
@@ -802,7 +814,6 @@ export default function Home() {
                             index + 1
                           ).padStart(2, "0")}
                         </span>
-
 
                         <p className="text-sm leading-6 text-gray-600">
                           {item.replace(
@@ -822,13 +833,11 @@ export default function Home() {
 
             )}
 
-
             {/* =================================================
                 DECISION PIPELINE
             ================================================= */}
 
             <section className="mt-10 mb-10 border border-[#dfe2e6] bg-white">
-
 
               <div className="px-5 py-4">
 
@@ -836,16 +845,13 @@ export default function Home() {
                   Decision pipeline
                 </p>
 
-
                 <h2 className="mt-1 text-lg font-semibold text-[#17191d]">
                   From evidence to decision
                 </h2>
 
               </div>
 
-
               <div className="grid grid-cols-1 divide-y divide-[#e5e7eb] md:grid-cols-4 md:divide-x md:divide-y-0">
-
 
                 {[
                   [
@@ -888,16 +894,13 @@ export default function Home() {
                         {number}
                       </p>
 
-
                       <p className="mt-2 text-sm font-semibold text-[#17191d]">
                         {title}
                       </p>
 
-
                       <p className="mt-2 text-xs leading-5 text-gray-500">
                         {description}
                       </p>
-
 
                       <p className="mt-4 font-mono text-[9px] uppercase tracking-[0.1em] text-[#027a48]">
 
@@ -914,13 +917,11 @@ export default function Home() {
 
               </div>
 
-
               <div className="border-t border-[#e5e7eb] px-5 py-4">
 
                 <p className="font-mono text-[9px] uppercase tracking-[0.12em] text-gray-400">
                   PayShield case engine
                 </p>
-
 
                 <p className="mt-1 text-xs text-gray-500">
                   Evidence remains separated from correlation
