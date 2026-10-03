@@ -1,5 +1,6 @@
 from .case import InvestigationCase
 from .correlation import extract_correlations
+from ..correlator import ATTACK_STATES
 
 
 def build_investigation_case(result: dict, graph) -> InvestigationCase:
@@ -10,10 +11,9 @@ def build_investigation_case(result: dict, graph) -> InvestigationCase:
     The investigation is a read-only projection of the actual pipeline.
 
     Important:
-    The Case model stores TimelineEvent objects.
-    The investigation API stores timeline entries as dictionaries.
-    Therefore, this function explicitly normalizes every timeline event
-    before passing it to the correlation extractor.
+        The canonical attack-state vocabulary comes directly from the
+        existing correlator. This builder does not calculate or modify
+        attack states.
     """
 
     case = result["case"]
@@ -38,7 +38,6 @@ def build_investigation_case(result: dict, graph) -> InvestigationCase:
     timeline = []
 
     for event in raw_timeline:
-
         if isinstance(event, dict):
             timeline.append(event)
 
@@ -68,45 +67,80 @@ def build_investigation_case(result: dict, graph) -> InvestigationCase:
 
         status="Analysis Complete",
 
+        # -----------------------------------------------------------
+        # Evidence
+        # -----------------------------------------------------------
+
         evidence=case.get(
             "evidence",
             [],
         ),
 
-        # Entity graph nodes
+        # -----------------------------------------------------------
+        # Entity graph
+        # -----------------------------------------------------------
+
         entities=graph_data.get(
             "nodes",
             [],
         ),
 
-        # Entity graph relationships
         edges=graph_data.get(
             "edges",
             [],
         ),
 
-        # Normalized timeline
+        # -----------------------------------------------------------
+        # Temporal case model
+        # -----------------------------------------------------------
+
         timeline=timeline,
 
-        # Extracted attack-state transitions
+        # -----------------------------------------------------------
+        # Existing correlation output
+        # -----------------------------------------------------------
+
         correlations=correlations,
 
+        # -----------------------------------------------------------
+        # Canonical attack-state vocabulary
+        #
+        # IMPORTANT:
+        # This is the exact existing list owned by the correlator.
+        # The investigation layer only exposes it for read-only
+        # consumers such as the Attack State page.
+        # -----------------------------------------------------------
+
+        attack_states=list(ATTACK_STATES),
+
+        # -----------------------------------------------------------
         # Current attack state
+        # -----------------------------------------------------------
+
         attack_state=case.get(
             "attack_state"
         ),
 
+        # -----------------------------------------------------------
         # Risk index if one exists
+        # -----------------------------------------------------------
+
         risk_index=case.get(
             "risk_index"
         ),
 
-        # Orchestrator decision
+        # -----------------------------------------------------------
+        # Existing orchestrator decision
+        # -----------------------------------------------------------
+
         policy_decision=case.get(
             "final_action"
         ),
 
+        # -----------------------------------------------------------
         # Evidence-backed explanations
+        # -----------------------------------------------------------
+
         findings=result.get(
             "explanation",
             [],

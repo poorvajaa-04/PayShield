@@ -1,4 +1,5 @@
 import traceback
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -260,13 +261,27 @@ def run_existing_case(
         )
 
 
+# =====================================================================
+# INVESTIGATIONS
+# =====================================================================
 
-# =====================================================================
-# INVESTIGATION
-# =====================================================================
+@app.get("/investigations")
+def get_investigations():
+    """
+    Return all investigations currently stored by PayShield.
+
+    Investigations are stored in memory and therefore represent
+    cases processed during the current backend session.
+    """
+
+    return list(investigations.values())
+
 
 @app.get("/investigations/{case_id}")
 def get_investigation(case_id: str):
+    """
+    Return a single processed investigation by case ID.
+    """
 
     investigation = investigations.get(
         case_id

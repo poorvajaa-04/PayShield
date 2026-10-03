@@ -56,6 +56,14 @@ class InvestigationCase(BaseModel):
     # Attack-state information
     # ---------------------------------------------------------------
 
+    # Canonical attack-state vocabulary exposed from the existing
+    # correlator so read-only consumers do not maintain a duplicate
+    # state list.
+    attack_states: list[str] = Field(
+        default_factory=list
+    )
+
+    # Current state determined by the existing correlator.
     attack_state: str | None = None
 
     # ---------------------------------------------------------------
