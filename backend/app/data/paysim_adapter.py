@@ -84,6 +84,8 @@ def load_paysim_sample(
     """
     Load a small sample from the real PaySim dataset.
 
+    This preserves the original dataset order.
+
     Parameters
     ----------
     limit:
@@ -127,6 +129,113 @@ def load_paysim_sample(
     return results
 
 
+def load_paysim_temporal_sample(
+    limit: int = 50,
+    steps: int = 5,
+    rows_per_step: int = 10,
+    fraud_only: bool = False,
+) -> list[dict]:
+    """
+    Load a bounded chronological PaySim sample.
+
+    Unlike load_paysim_sample(), this function deliberately samples
+    across multiple PaySim step values.
+
+    The function:
+
+        1. Reads the real dataset in chunks.
+        2. Preserves dataset order.
+        3. Keeps transactions from consecutive PaySim steps.
+        4. Keeps at most rows_per_step transactions per step.
+        5. Stops after the requested number of steps/records.
+
+    Ground-truth fraud labels are never used to choose the temporal
+    window unless fraud_only=True is explicitly requested by the caller.
+    """
+
+    if limit <= 0:
+        return []
+
+    if steps <= 0:
+        return []
+
+    if rows_per_step <= 0:
+        return []
+
+    file_path = get_paysim_file()
+
+    usecols = [
+        "step",
+        "type",
+        "amount",
+        "nameOrig",
+        "nameDest",
+        "isFraud",
+        "isFlaggedFraud",
+    ]
+
+    results: list[dict] = []
+
+    # We expect PaySim to be ordered chronologically by step.
+    # The first encountered step becomes the beginning of the
+    # temporal window.
+    start_step: int | None = None
+
+    rows_in_current_step = 0
+    last_step: int | None = None
+
+    for chunk in pd.read_csv(
+        file_path,
+        usecols=usecols,
+        chunksize=100_000,
+    ):
+
+        if fraud_only:
+            chunk = chunk[chunk["isFraud"] == 1]
+
+        for row in chunk.to_dict("records"):
+
+            normalized = _normalize_row(row)
+            current_step = normalized["step"]
+
+            # Establish the beginning of the temporal window.
+            if start_step is None:
+                start_step = current_step
+                last_step = current_step
+                rows_in_current_step = 0
+
+            # Ignore anything before the selected window.
+            if current_step < start_step:
+                continue
+
+            # Once the requested temporal window has been reached,
+            # stop reading further data.
+            if current_step >= start_step + steps:
+                return results[:limit]
+
+            # Detect movement to a new PaySim step.
+            if (
+                last_step is not None
+                and current_step != last_step
+            ):
+                rows_in_current_step = 0
+
+            # Preserve only a bounded number of transactions per step.
+            if rows_in_current_step >= rows_per_step:
+                last_step = current_step
+                continue
+
+            results.append(normalized)
+
+            rows_in_current_step += 1
+            last_step = current_step
+
+            if len(results) >= limit:
+                return results
+
+    return results[:limit]
+
+
 def iter_paysim(
     chunk_size: int = 100_000,
     fraud_only: bool = False,
@@ -160,6 +269,7 @@ def iter_paysim(
         for row in chunk.to_dict("records"):
             yield _normalize_row(row)
 
+
 def load_paysim_graph_sample(
     limit: int = 100,
     fraud_only: bool = False,
@@ -167,7 +277,8 @@ def load_paysim_graph_sample(
     """
     Load PaySim transactions specifically for entity-graph experiments.
 
-    Returns normalized transactions suitable for EntityGraph.add_transaction_edge().
+    Returns normalized transactions suitable for
+    EntityGraph.add_transaction_edge().
     """
 
     return load_paysim_sample(

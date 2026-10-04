@@ -10,13 +10,14 @@ Important:
     - Label is ground truth for validation, not an input to the detector.
     - CSVs are read in chunks to avoid loading huge files into memory.
 """
-
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Iterator, Optional
 
 import pandas as pd
+import math
+
 
 
 # ---------------------------------------------------------------------------
@@ -142,7 +143,17 @@ def validate_columns(columns: list[str]) -> None:
 
 def numeric(row: pd.Series, column: str) -> float:
     """
-    Safely extract a numeric feature from a CIC row.
+    Safely extract a finite numeric feature from a CIC row.
+
+    CIC-IDS2017 contains some rows where rate-based fields can become
+    NaN, +inf, or -inf because of zero-duration flows.
+
+    PayShield must never propagate non-finite floating-point values
+    into its JSON/API layer.
+
+    Non-finite values are therefore normalized to 0.0.
+
+    Ground-truth labels are not involved in this conversion.
     """
 
     value = pd.to_numeric(
@@ -153,7 +164,12 @@ def numeric(row: pd.Series, column: str) -> float:
     if pd.isna(value):
         return 0.0
 
-    return float(value)
+    value = float(value)
+
+    if not math.isfinite(value):
+        return 0.0
+
+    return value
 
 
 # ---------------------------------------------------------------------------

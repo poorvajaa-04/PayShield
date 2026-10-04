@@ -2,7 +2,7 @@ import traceback
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.app.models.case import Case, TimelineEvent
 from backend.app.entity_graph.entity_graph import EntityGraph
@@ -43,7 +43,16 @@ investigations = {}
 # =====================================================================
 
 class RunCaseRequest(BaseModel):
-    script: list[dict]
+    """
+    Request body for running a PayShield case.
+
+    script is optional so that PS-REAL-001 can automatically load
+    the real CIC-IDS2017 + PaySim dataset-backed case.
+
+    Existing callers can still provide an explicit script.
+    """
+
+    script: list[dict] = Field(default_factory=list)
     correlated: bool = True
 
 
@@ -161,7 +170,8 @@ def get_real_dataset_case(case_id: str):
     """
     Build a case using the real CIC-IDS2017 + PaySim datasets.
 
-    This endpoint is intended for the full dataset-backed version.
+    This endpoint exposes the generated dataset-backed script for
+    inspection and debugging.
     """
 
     if case_id != "PS-REAL-001":
@@ -209,9 +219,65 @@ def run_existing_case(
     case_id: str,
     request: RunCaseRequest,
 ):
+    """
+    Run a PayShield case through the complete pipeline.
+
+    For PS-REAL-001:
+
+        If no script is supplied,
+        automatically load the real
+        CIC-IDS2017 + PaySim dataset-backed case.
+
+    Therefore the caller can simply send:
+
+        {
+            "correlated": true
+        }
+
+    For other cases, an explicit script is still required.
+    """
+
     graph = EntityGraph()
 
     try:
+
+        # -------------------------------------------------------------
+        # AUTOMATIC REAL-DATA LOADING
+        # -------------------------------------------------------------
+        #
+        # PS-REAL-001 is the dataset-backed case.
+        #
+        # When the caller does not provide a script, build the script
+        # directly from the actual CIC-IDS2017 and PaySim datasets.
+        #
+        # This allows the entire real-data flow to be executed through
+        # one API request.
+        # -------------------------------------------------------------
+
+        if (
+            case_id == "PS-REAL-001"
+            and not request.script
+        ):
+            script = build_real_case_from_datasets(
+                case_id=case_id,
+            )
+
+        else:
+            script = request.script
+
+        # -------------------------------------------------------------
+        # Validate explicit scripts for non-real cases
+        # -------------------------------------------------------------
+
+        if not script:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "No script supplied for this case. "
+                    "For PS-REAL-001, omit the script to "
+                    "automatically load CIC-IDS2017 + PaySim."
+                ),
+            )
 
         # -------------------------------------------------------------
         # Run the actual PayShield detection/correlation pipeline
@@ -219,7 +285,7 @@ def run_existing_case(
 
         result = run_case(
             case_id=case_id,
-            script=request.script,
+            script=script,
             graph=graph,
             correlated=request.correlated,
         )
@@ -245,6 +311,21 @@ def run_existing_case(
         # -------------------------------------------------------------
 
         return result
+
+    except HTTPException:
+        raise
+
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=str(exc),
+        )
+
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=str(exc),
+        )
 
     except KeyError as exc:
         raise HTTPException(
