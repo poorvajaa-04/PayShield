@@ -12,9 +12,34 @@ from backend.app.data.real_case import (
     build_prototype_case,
     build_real_case_from_datasets,
 )
+from backend.app.data.dataset_bootstrap import (
+    ensure_real_datasets,
+)
 
 
 app = FastAPI(title="PayShield API")
+
+
+# =====================================================================
+# DATASET BOOTSTRAP
+# =====================================================================
+
+@app.on_event("startup")
+def prepare_real_datasets():
+    """
+    Ensure the real CIC-IDS2017 and PaySim datasets are available
+    before the API starts handling requests.
+
+    Local development:
+        Existing datasets are detected and left untouched.
+
+    Render/deployment:
+        Missing datasets are downloaded from the public Hugging Face
+        repository and extracted to the paths expected by the existing
+        PayShield data adapters.
+    """
+
+    ensure_real_datasets()
 
 
 # =====================================================================
