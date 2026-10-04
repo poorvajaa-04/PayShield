@@ -29,6 +29,8 @@ interface BackendEvidence {
   is_structural_hub?: boolean;
   pagerank?: number;
   betweenness?: number;
+
+  [key: string]: unknown;
 }
 
 interface BackendTimelineEvent {
@@ -44,6 +46,8 @@ interface BackendTimelineEvent {
   triggering_feature?: string;
   amount?: number;
   to_account?: string;
+
+  [key: string]: unknown;
 }
 
 interface BackendEntity {
@@ -52,6 +56,13 @@ interface BackendEntity {
   confirmed_mule?: boolean;
   dismissed?: boolean;
   risk_tier?: number;
+
+  /*
+   * IMPORTANT:
+   * EntityGraphPanel expects BackendEntity to allow
+   * additional backend fields.
+   */
+  [key: string]: unknown;
 }
 
 interface BackendEdge {
@@ -61,6 +72,13 @@ interface BackendEdge {
   tx_count?: number;
   tx_amount?: number;
   last_ts?: string;
+
+  /*
+   * IMPORTANT:
+   * EntityGraphPanel expects BackendEdge to allow
+   * additional backend fields.
+   */
+  [key: string]: unknown;
 }
 
 interface InvestigationData {
@@ -81,6 +99,8 @@ interface InvestigationData {
     from_state?: string;
     to_state?: string;
     reason?: string;
+
+    [key: string]: unknown;
   }[];
 
   attack_state: string | null;
@@ -158,7 +178,7 @@ export default function Home() {
 
       const realCaseResponse =
         await fetch(
-          `${apiUrl}/cases/PS-REAL-001/demo`
+          `${apiUrl}/cases/PS-REAL-001/real-data`
         );
 
       if (!realCaseResponse.ok) {
@@ -286,8 +306,7 @@ export default function Home() {
 
   /* =========================================================
      ATTACK STATE
-     
-     IMPORTANT:
+
      Convert null -> undefined because
      AttackStatePanel expects string | undefined.
   ========================================================= */

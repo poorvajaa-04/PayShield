@@ -6,7 +6,7 @@ PayShield case-data builder.
 This module provides two distinct case sources:
 
 1. Prototype case:
-   A small deterministic case used by the deployed/demo workflow.
+   A small deterministic case used by the demo/prototype workflow.
 
 2. Real dataset case:
    CIC-IDS2017 and PaySim records are converted into the same
@@ -14,38 +14,70 @@ This module provides two distinct case sources:
 
 IMPORTANT:
 
-The real-data path does not use dataset ground-truth labels to decide
-which records are suspicious.
+The real-data path does not use dataset ground-truth labels to make
+the actual detection or policy decision.
 
-Ground-truth labels are retained only as evaluation metadata.
+Ground-truth labels may be used only to construct a bounded evaluation
+sample. The selected records are then passed through the normal
+PayShield pipeline:
 
-The real dataset records are evidence sources. They are passed into
-the existing PayShield detectors, Entity Graph, Correlator, Attack State,
-Investigation, Timeline, Orchestrator and Explainability layers.
+    evidence
+        ↓
+    entity graph
+        ↓
+    correlator
+        ↓
+    attack state
+        ↓
+    investigation
+        ↓
+    timeline
+        ↓
+    orchestrator
+        ↓
+    policy decision
 """
 
 from hashlib import sha256
 import json
 
 from .cic_ids_adapter import load_cic_sample
-from .paysim_adapter import load_paysim_sample
+from .paysim_adapter import iter_paysim
 
 
 # ---------------------------------------------------------------------------
 # REAL-DATA SAMPLE CONFIGURATION
 # ---------------------------------------------------------------------------
 
+# CIC-IDS2017:
+# Read a bounded candidate pool through the existing chunked adapter.
 CIC_SAMPLE_ROWS = 500
 
-# Read a bounded portion of PaySim so the deployed prototype does not
-# repeatedly scan the complete dataset.
-PAYSIM_SAMPLE_ROWS = 2_000
+# Number of CIC records that actually enter the real-data case.
+CIC_NETWORK_RECORDS = 15
 
-# Number of PaySim transactions included in the final graph scenario.
-PAYSIM_GRAPH_TRANSACTIONS = 10
 
-# Number of consecutive PaySim steps used by the scenario.
-PAYSIM_TEMPORAL_STEPS = 5
+# PaySim:
+#
+# We do NOT simply take the first N fraud rows.
+#
+# Instead we stream a bounded portion of PaySim, identify a small number
+# of real fraud anchor transactions, and then collect actual transactions
+# involving those anchor accounts.
+#
+# This produces a more useful real transaction topology without
+# fabricating any relationships.
+PAYSIM_GRAPH_TRANSACTIONS = 25
+
+# Number of fraud transactions used only to establish the evaluation
+# scenario / graph anchors.
+PAYSIM_FRAUD_ANCHORS = 5
+
+# Maximum number of PaySim rows examined by the connected-sample
+# selector.
+#
+# This is a hard bound. The complete dataset is never loaded into memory.
+PAYSIM_MAX_SCAN_ROWS = 2_000_000
 
 
 # =====================================================================
@@ -56,9 +88,7 @@ def build_prototype_case(
     case_id: str = "PS-REAL-001",
 ) -> list[dict]:
     """
-    Build the existing deterministic PayShield prototype case.
-
-    IMPORTANT:
+    Build the deterministic PayShield prototype case.
 
     This function only supplies evidence.
 
@@ -66,10 +96,7 @@ def build_prototype_case(
         - risk score
         - attack state
         - policy decision
-
-    Those are produced by the existing PayShield pipeline.
     """
-
     return [
         {
             "type": "lure",
@@ -120,10 +147,11 @@ def _dataset_record_id(
     """
     Create a deterministic identifier for a normalized dataset record.
 
-    The identifier is derived from the normalized record rather than from
-    any detection result or ground-truth label.
-    """
+    The identifier is derived from the dataset record itself.
 
+    Detection output and ground-truth labels are not used to construct
+    the identifier.
+    """
     canonical = json.dumps(
         row,
         sort_keys=True,
@@ -149,11 +177,8 @@ def _network_features(
     Convert one normalized CIC-IDS2017 record into a PayShield
     network pipeline step.
 
-    Real CIC behavioural features are preserved.
-
-    ground_truth_label remains evaluation metadata only.
+    The CIC ground-truth label is preserved as metadata only.
     """
-
     return {
         "type": "network",
         "stream": "network",
@@ -171,7 +196,6 @@ def _network_features(
 
         "total_packets": row["total_packets"],
         "total_bytes": row["total_bytes"],
-
         "forward_packets": row["forward_packets"],
         "backward_packets": row["backward_packets"],
 
@@ -202,13 +226,13 @@ def _network_features(
 
         "connection_flags": row["connection_flags"],
 
-        # Ground truth metadata only.
+        # Evaluation metadata only.
         "ground_truth_label": (
             row["ground_truth_label"]
         ),
 
-        # CIC adapter does not currently expose the original timestamp.
-        # This is therefore a deterministic sequence timestamp.
+        # The CIC adapter currently does not expose an original
+        # timestamp, so retain a deterministic sequence timestamp.
         "t": f"10:{sequence:02d}",
     }
 
@@ -225,9 +249,9 @@ def _transaction_features(
     Convert one normalized PaySim transaction into the existing
     PayShield transaction pipeline format.
 
-    PaySim ground-truth labels are preserved only as metadata.
+    PaySim ground-truth fields are preserved only as evaluation
+    metadata.
     """
-
     return {
         "type": "transaction",
         "stream": "transaction",
@@ -243,7 +267,6 @@ def _transaction_features(
         "amount": row["amount"],
 
         "from_account": row["from_account"],
-
         "to_account": row["to_account"],
 
         "transaction_type": (
@@ -256,7 +279,7 @@ def _transaction_features(
         # Existing Timeline representation.
         "t": str(row["step"]),
 
-        # Ground truth metadata only.
+        # Evaluation metadata only.
         "ground_truth_fraud": (
             row["is_fraud"]
         ),
@@ -268,72 +291,234 @@ def _transaction_features(
 
 
 # =====================================================================
-# PAYSim TEMPORAL WINDOW SELECTION
+# PAYSim CONNECTED SAMPLE SELECTION
 # =====================================================================
 
-def _select_temporal_transactions(
-    rows: list[dict],
+def _select_connected_paysim_transactions(
     transaction_limit: int,
-    temporal_steps: int,
+    fraud_anchor_limit: int,
+    max_scan_rows: int,
 ) -> list[dict]:
     """
-    Select a small chronological PaySim window.
+    Select a bounded PaySim sample with naturally connected accounts.
 
-    The selection intentionally does NOT use:
-        - isFraud
-        - isFlaggedFraud
-        - transaction amount
+    Strategy
+    --------
+    1. Stream the real PaySim dataset through the existing adapter.
+    2. Identify a small number of actual fraudulent transactions.
+    3. Treat the accounts appearing in those transactions as graph
+       anchors.
+    4. Continue through the real dataset.
+    5. Include actual transactions that touch those anchor accounts.
+    6. Continue expanding the account set when a selected transaction
+       introduces another connected account.
+    7. Stop once the requested bounded transaction count is reached.
 
-    Instead:
+    IMPORTANT
+    ---------
+    The fraud label is used ONLY to establish a bounded evaluation
+    scenario.
 
-        1. Find the earliest available PaySim step.
-        2. Select transactions from consecutive steps.
-        3. Preserve original dataset order within each step.
-        4. Stop after the requested number of transactions.
+    It is NOT converted into:
+        suspicious = True
+        fraud = True
+        risk = high
 
-    This produces a meaningful temporal sequence without fabricating
-    timestamps or using ground-truth labels for selection.
+    Every selected transaction still enters the normal PayShield
+    Entity Graph and Correlator.
+
+    No synthetic transaction is created.
+    No synthetic edge is created.
     """
-
-    if not rows:
-        return []
 
     if transaction_limit <= 0:
         return []
 
-    if temporal_steps <= 0:
+    if fraud_anchor_limit <= 0:
         return []
 
-    # PaySim's dataset is already ordered by step, but sorting here makes
-    # the temporal intent explicit and protects this function if the
-    # adapter implementation changes later.
-    chronological_rows = sorted(
-        rows,
-        key=lambda row: row["step"],
-    )
-
-    start_step = chronological_rows[0]["step"]
-
-    end_step = (
-        start_step
-        + temporal_steps
-        - 1
-    )
+    if max_scan_rows <= 0:
+        return []
 
     selected: list[dict] = []
+    selected_ids: set[str] = set()
 
-    for row in chronological_rows:
-        step = row["step"]
+    # Accounts that participate in the selected graph scenario.
+    connected_accounts: set[str] = set()
 
-        if step < start_step:
-            continue
+    # Fraud transactions are anchors only. Their label is never used
+    # after the transaction has been selected.
+    fraud_anchor_count = 0
 
-        if step > end_step:
+    rows_scanned = 0
+
+    for row in iter_paysim(
+        chunk_size=100_000,
+        fraud_only=False,
+    ):
+        rows_scanned += 1
+
+        if rows_scanned > max_scan_rows:
             break
 
+        record_id = _dataset_record_id(
+            "PaySim",
+            row,
+        )
+
+        if record_id in selected_ids:
+            continue
+
+        from_account = row["from_account"]
+        to_account = row["to_account"]
+
+        # -------------------------------------------------------------
+        # Stage 1:
+        # Find a small number of actual fraud transactions.
+        #
+        # This is sample construction/evaluation only.
+        # -------------------------------------------------------------
+        if (
+            row["is_fraud"] == 1
+            and fraud_anchor_count < fraud_anchor_limit
+        ):
+            selected.append(row)
+            selected_ids.add(record_id)
+
+            connected_accounts.add(
+                from_account
+            )
+            connected_accounts.add(
+                to_account
+            )
+
+            fraud_anchor_count += 1
+
+            if len(selected) >= transaction_limit:
+                break
+
+            continue
+
+        # -------------------------------------------------------------
+        # Stage 2:
+        # Once anchors exist, select ACTUAL transactions involving
+        # those accounts.
+        #
+        # This is what creates real multi-edge topology.
+        # -------------------------------------------------------------
+        touches_connected_account = (
+            from_account in connected_accounts
+            or to_account in connected_accounts
+        )
+
+        if not touches_connected_account:
+            continue
+
         selected.append(row)
+        selected_ids.add(record_id)
+
+        # Expand the graph using actual observed relationships.
+        connected_accounts.add(
+            from_account
+        )
+        connected_accounts.add(
+            to_account
+        )
 
         if len(selected) >= transaction_limit:
+            break
+
+    # -------------------------------------------------------------
+    # Fallback:
+    #
+    # If the bounded scan did not produce enough connected records,
+    # return the real records we actually found rather than fabricating
+    # relationships.
+    # -------------------------------------------------------------
+    return selected[:transaction_limit]
+
+
+# =====================================================================
+# CIC REPRESENTATIVE SAMPLE SELECTION
+# =====================================================================
+
+def _select_network_records(
+    rows: list[dict],
+    limit: int,
+) -> list[dict]:
+    """
+    Select a small representative set of CIC attack records.
+
+    The ground-truth label is used only to construct the prototype
+    evaluation sample.
+
+    The selected flows still go through the normal CIC detector.
+    """
+    if not rows:
+        return []
+
+    if limit <= 0:
+        return []
+
+    # Prefer diversity across attack labels.
+    best_by_label: dict[str, dict] = {}
+
+    for row in rows:
+        label = str(
+            row.get(
+                "ground_truth_label",
+                "UNKNOWN",
+            )
+        )
+
+        existing = best_by_label.get(label)
+
+        if (
+            existing is None
+            or row["flow_packets_per_second"]
+            > existing["flow_packets_per_second"]
+        ):
+            best_by_label[label] = row
+
+    selected: list[dict] = list(
+        best_by_label.values()
+    )
+
+    selected.sort(
+        key=lambda row: row["flow_packets_per_second"],
+        reverse=True,
+    )
+
+    if len(selected) > limit:
+        return selected[:limit]
+
+    selected_ids = {
+        _dataset_record_id(
+            "CIC-IDS2017",
+            row,
+        )
+        for row in selected
+    }
+
+    remaining = sorted(
+        rows,
+        key=lambda row: row["flow_packets_per_second"],
+        reverse=True,
+    )
+
+    for row in remaining:
+        record_id = _dataset_record_id(
+            "CIC-IDS2017",
+            row,
+        )
+
+        if record_id in selected_ids:
+            continue
+
+        selected.append(row)
+        selected_ids.add(record_id)
+
+        if len(selected) >= limit:
             break
 
     return selected
@@ -350,16 +535,15 @@ def build_real_case_from_datasets(
     Build a PayShield case from the real CIC-IDS2017 and PaySim datasets.
 
     CIC:
-        - bounded sample
-        - representative attack flow when available
-        - ground truth is used only to construct the evaluation scenario
-        - ground truth is NOT passed into the detector as a decision signal
+        - bounded candidate sample
+        - multiple representative attack flows
+        - ground truth is used only for sample construction
 
     PaySim:
-        - bounded neutral sample
-        - consecutive temporal window
-        - original order within each step preserved
-        - ground truth is not used for selection
+        - bounded streaming scan
+        - small number of real fraud anchors
+        - surrounding real transactions involving those accounts
+        - naturally connected transaction topology
 
     The resulting records enter the normal PayShield pipeline.
     """
@@ -370,90 +554,53 @@ def build_real_case_from_datasets(
 
     cic_rows = load_cic_sample(
         rows=CIC_SAMPLE_ROWS,
-        attack_only=False,
+        attack_only=True,
     )
 
     if not cic_rows:
         raise RuntimeError(
-            "No records found in CIC-IDS2017."
+            "No attack records found in CIC-IDS2017."
         )
 
-    # -------------------------------------------------------------
-    # Select a representative attack record for the real-data
-    # evaluation scenario.
-    #
-    # IMPORTANT:
-    #
-    # ground_truth_label is used ONLY here to construct the
-    # evaluation scenario.
-    #
-    # It is NOT passed to classify_cic_flow() as a decision signal.
-    #
-    # The selected record still goes through the normal CIC
-    # detector and the normal PayShield pipeline.
-    # -------------------------------------------------------------
-
-    attack_candidates = [
-        row
-        for row in cic_rows
-        if str(
-            row.get("ground_truth_label", "")
-        ).upper()
-        not in {
-            "BENIGN",
-            "BENIGN TRAFFIC",
-        }
-    ]
-
-    if attack_candidates:
-
-        network = max(
-            attack_candidates,
-            key=lambda row: row[
-                "flow_packets_per_second"
-            ],
+    selected_network_records = (
+        _select_network_records(
+            rows=cic_rows,
+            limit=CIC_NETWORK_RECORDS,
         )
-
-    else:
-
-        # Safe fallback if the bounded sample contains
-        # no labelled attack records.
-        network = max(
-            cic_rows,
-            key=lambda row: row[
-                "flow_packets_per_second"
-            ],
-        )
-
-    network_step = _network_features(
-        network,
-        sequence=0,
     )
+
+    if not selected_network_records:
+        raise RuntimeError(
+            "No representative CIC-IDS2017 records "
+            "were available for the real-data case."
+        )
+
+    network_steps = [
+        _network_features(
+            row,
+            sequence=index,
+        )
+        for index, row in enumerate(
+            selected_network_records
+        )
+    ]
 
     # =================================================================
     # PaySim
     # =================================================================
 
-    paysim_rows = load_paysim_sample(
-        limit=PAYSIM_SAMPLE_ROWS,
-        fraud_only=False,
-    )
-
-    if not paysim_rows:
-        raise RuntimeError(
-            "No records found in PaySim."
+    selected_transactions = (
+        _select_connected_paysim_transactions(
+            transaction_limit=PAYSIM_GRAPH_TRANSACTIONS,
+            fraud_anchor_limit=PAYSIM_FRAUD_ANCHORS,
+            max_scan_rows=PAYSIM_MAX_SCAN_ROWS,
         )
-
-    selected_transactions = _select_temporal_transactions(
-        rows=paysim_rows,
-        transaction_limit=PAYSIM_GRAPH_TRANSACTIONS,
-        temporal_steps=PAYSIM_TEMPORAL_STEPS,
     )
 
     if not selected_transactions:
         raise RuntimeError(
             "No PaySim transactions were available "
-            "for the temporal analysis window."
+            "for the connected graph scenario."
         )
 
     transaction_steps = [
@@ -471,6 +618,6 @@ def build_real_case_from_datasets(
     # =================================================================
 
     return [
-        network_step,
+        *network_steps,
         *transaction_steps,
     ]
